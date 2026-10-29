@@ -95,6 +95,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.example.R
 import com.example.data.model.VideoClipProject
+import com.example.media.RenderHealthStatus
 import com.example.media.VideoClipEngine
 import com.example.media.VideoSourceMetadata
 import com.example.util.openExternalUrl
@@ -116,6 +117,13 @@ fun ClipStudioScreen(
     creatorGrowthResult: CreatorGrowthResult?,
     bannerState: GenerationBannerState,
     initialStudioMode: Int = 0,
+    verticalCrop916: Boolean = true,
+    useRenderCloudForUploads: Boolean = false,
+    renderBaseUrl: String = "",
+    renderHealthStatus: RenderHealthStatus? = null,
+    onToggleVerticalCrop: (Boolean) -> Unit = {},
+    onToggleRenderUploads: (Boolean) -> Unit = {},
+    onSaveAndTestRenderUrl: (Context, String) -> Unit = { _, _ -> },
     onYouTubeTokenGranted: (String) -> Unit,
     onGenerateAiVideo: (
         context: Context,
@@ -145,6 +153,7 @@ fun ClipStudioScreen(
         privacy: String
     ) -> Unit,
     onRenderLinkCandidate: (Context, YouTubeLinkClipCandidate, Boolean, String) -> Unit,
+    onCutCandidateViaRender: (Context, YouTubeLinkClipCandidate, Boolean, String) -> Unit = { _, _, _, _ -> },
     onExportClipToGallery: (Context, VideoClipProject) -> Unit,
     onUploadClip: (VideoClipProject, String) -> Unit,
     onMarkSharedViaApp: (String) -> Unit,
@@ -244,6 +253,13 @@ fun ClipStudioScreen(
                 authError = authError,
                 isBusy = isBusy,
                 initialMode = initialStudioMode,
+                verticalCrop916 = verticalCrop916,
+                useRenderCloudForUploads = useRenderCloudForUploads,
+                renderBaseUrl = renderBaseUrl,
+                renderHealthStatus = renderHealthStatus,
+                onToggleVerticalCrop = onToggleVerticalCrop,
+                onToggleRenderUploads = onToggleRenderUploads,
+                onSaveAndTestRenderUrl = { url -> onSaveAndTestRenderUrl(context, url) },
                 onConnectYouTube = {
                     authError = null
                     scope.launch {
@@ -272,6 +288,9 @@ fun ClipStudioScreen(
                 },
                 onRenderLinkCandidate = { candidate, autoPost, privacy ->
                     onRenderLinkCandidate(context, candidate, autoPost, privacy)
+                },
+                onCutCandidateViaRender = { candidate, autoPost, privacy ->
+                    onCutCandidateViaRender(context, candidate, autoPost, privacy)
                 },
                 onExportClipToGallery = { clip ->
                     onExportClipToGallery(context, clip)
@@ -311,11 +330,19 @@ private fun ClipAndPublishPane(
     authError: String?,
     isBusy: Boolean,
     initialMode: Int,
+    verticalCrop916: Boolean,
+    useRenderCloudForUploads: Boolean,
+    renderBaseUrl: String,
+    renderHealthStatus: RenderHealthStatus?,
+    onToggleVerticalCrop: (Boolean) -> Unit,
+    onToggleRenderUploads: (Boolean) -> Unit,
+    onSaveAndTestRenderUrl: (String) -> Unit,
     onConnectYouTube: () -> Unit,
     onGenerateAiVideo: (String, Int, String, Boolean, Boolean, Boolean, String) -> Unit,
     onClipFromLink: (String, String, Boolean, String) -> Unit,
     onClipUploadedVideo: (Uri, String, Boolean, Int?, Int?, Boolean, String) -> Unit,
     onRenderLinkCandidate: (YouTubeLinkClipCandidate, Boolean, String) -> Unit,
+    onCutCandidateViaRender: (YouTubeLinkClipCandidate, Boolean, String) -> Unit,
     onExportClipToGallery: (VideoClipProject) -> Unit,
     onPreviewClip: (VideoClipProject) -> Unit,
     onUploadClip: (VideoClipProject, String) -> Unit,
@@ -858,6 +885,20 @@ private fun ClipAndPublishPane(
             }
         }
 
+        // Video Processing Pipeline (On-Device Media3 Transformer + Render Cloud FFmpeg)
+        item(key = "video_pipeline_and_render_card") {
+            PipelineAndRenderCard(
+                verticalCrop916 = verticalCrop916,
+                useRenderCloudForUploads = useRenderCloudForUploads,
+                renderBaseUrl = renderBaseUrl,
+                renderHealthStatus = renderHealthStatus,
+                isBusy = isBusy,
+                onToggleVerticalCrop = onToggleVerticalCrop,
+                onToggleRenderUploads = onToggleRenderUploads,
+                onSaveAndTestRenderUrl = onSaveAndTestRenderUrl
+            )
+        }
+
         // Extracted YouTube Link Candidates (shown whenever populated)
         if (youtubeLinkCandidates.isNotEmpty()) {
             items(youtubeLinkCandidates, key = { "yt_cand_${it.index}_${it.title}" }) { cand ->
@@ -908,18 +949,44 @@ private fun ClipAndPublishPane(
                             color = MaterialTheme.colorScheme.secondary
                         )
                         Spacer(modifier = Modifier.height(10.dp))
-                        Button(
-                            onClick = { onRenderLinkCandidate(cand, autoPost, privacyStatus) },
-                            enabled = !isBusy,
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(48.dp)
-                                .testTag("render_yt_candidate_${cand.index}")
-                        ) {
-                            Icon(Icons.Default.MovieCreation, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(if (autoPost && isYouTubeConnected) "Render MP4 & Auto-Upload YT" else "Render Vertical MP4 Short (+ Voice)")
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            if (renderBaseUrl.isNotBlank()) {
+                                Button(
+                                    onClick = { onCutCandidateViaRender(cand, autoPost, privacyStatus) },
+                                    enabled = !isBusy,
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = MaterialTheme.colorScheme.tertiary,
+                                        contentColor = MaterialTheme.colorScheme.onTertiary
+                                    ),
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(48.dp)
+                                        .testTag("cut_ffmpeg_yt_candidate_${cand.index}")
+                                ) {
+                                    Icon(Icons.Default.ContentCut, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(stringResource(R.string.render_cut_real_clip_cta), maxLines = 1)
+                                }
+                            }
+                            Button(
+                                onClick = { onRenderLinkCandidate(cand, autoPost, privacyStatus) },
+                                enabled = !isBusy,
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(48.dp)
+                                    .testTag("render_yt_candidate_${cand.index}")
+                            ) {
+                                Icon(Icons.Default.MovieCreation, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    if (renderBaseUrl.isNotBlank()) "AI Short + Voice"
+                                    else if (autoPost && isYouTubeConnected) "Render MP4 & Auto-Upload YT"
+                                    else "Render Vertical MP4 Short (+ Voice)",
+                                    maxLines = 1
+                                )
+                            }
                         }
                     }
                 }

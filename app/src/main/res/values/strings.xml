@@ -58,6 +58,10 @@
     <string name="save_gallery_cta">Save MP4</string>
     <string name="upload_youtube_cta">Post to YouTube</string>
     <string name="share_youtube_app_cta">Open in YouTube App</string>
+    <string name="pipeline_card_title">FFmpeg &amp; Media3 Video Pipeline</string>
+    <string name="pipeline_vertical_crop_label">9:16 Vertical Shorts Crop (720x1280)</string>
+    <string name="render_connect_cta">Save &amp; Test Render FFmpeg</string>
+    <string name="render_cut_real_clip_cta">Cut Video via Render FFmpeg</string>
 
     <!-- Creator Spotlight -->
     <string name="creator_spotlight_badge">OFFICIAL CREATOR</string>

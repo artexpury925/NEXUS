@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: nexus-ai-video-pipeline
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "10000"

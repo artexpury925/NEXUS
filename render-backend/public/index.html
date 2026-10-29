@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Nexus AI • Render Cloud FFmpeg Video Pipeline</title>
+  <style>
+    :root {
+      --bg: #070a12;
+      --surface: #111829;
+      --surface-2: #182238;
+      --cyan: #00e5ff;
+      --crimson: #ff1744;
+      --violet: #a77bff;
+      --text: #f1f5f9;
+      --muted: #94a3b8;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: radial-gradient(circle at top right, #161f3d 0%, var(--bg) 55%);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 20px 16px 60px;
+    }
+    .container { max-width: 900px; margin: 0 auto; }
+    .promo-banner {
+      background: linear-gradient(95deg, #2b0510 0%, #090b12 55%, #1d050d 100%);
+      border: 1.5px solid var(--crimson);
+      border-radius: 18px;
+      padding: 16px 20px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      box-shadow: 0 0 28px rgba(255, 23, 68, 0.28);
+      margin-bottom: 22px;
+    }
+    .promo-tag {
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.09em;
+      color: var(--crimson);
+      text-transform: uppercase;
+    }
+    .promo-title { font-size: 17px; font-weight: 800; margin-top: 3px; }
+    .promo-sub { font-size: 13px; color: #cbd5e1; margin-top: 3px; }
+    .promo-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+    .btn-subscribe {
+      background: var(--crimson);
+      color: #fff;
+      text-decoration: none;
+      font-weight: 800;
+      padding: 11px 20px;
+      border-radius: 12px;
+      box-shadow: 0 0 18px rgba(255, 23, 68, 0.7);
+      font-size: 14px;
+    }
+    .btn-ig {
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      color: #fff;
+      text-decoration: none;
+      font-weight: 700;
+      padding: 11px 16px;
+      border-radius: 12px;
+      font-size: 13px;
+    }
+    .hero {
+      background: var(--surface);
+      border: 1px solid rgba(0, 229, 255, 0.28);
+      border-radius: 20px;
+      padding: 22px;
+      margin-bottom: 20px;
+    }
+    .badge-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+    .health-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 12px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      background: rgba(0, 229, 255, 0.12);
+      color: var(--cyan);
+      border: 1px solid rgba(0, 229, 255, 0.35);
+    }
+    .copy-endpoint-btn {
+      background: var(--surface-2);
+      color: var(--cyan);
+      border: 1px solid rgba(0, 229, 255, 0.4);
+      padding: 8px 14px;
+      border-radius: 10px;
+      cursor: pointer;
+      font-weight: 700;
+      font-size: 12px;
+    }
+    h1 { font-size: 26px; font-weight: 800; margin-bottom: 6px; }
+    .subtitle { color: var(--muted); font-size: 14px; line-height: 1.5; }
+    .tabs {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+    .tab-btn {
+      padding: 13px;
+      border-radius: 14px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: var(--surface);
+      color: var(--muted);
+      font-weight: 700;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    .tab-btn.active {
+      background: rgba(0, 229, 255, 0.14);
+      color: var(--cyan);
+      border-color: var(--cyan);
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 20px;
+      padding: 22px;
+    }
+    label {
+      display: block;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--cyan);
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    input[type="text"], input[type="number"], input[type="file"] {
+      width: 100%;
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.16);
+      background: #0b101d;
+      color: #fff;
+      font-size: 14px;
+      margin-bottom: 14px;
+    }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .check-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin: 4px 0 16px;
+      font-size: 14px;
+    }
+    .submit-btn {
+      width: 100%;
+      padding: 14px;
+      border-radius: 14px;
+      border: none;
+      background: linear-gradient(90deg, var(--cyan), var(--violet));
+      color: #060913;
+      font-weight: 800;
+      font-size: 15px;
+      cursor: pointer;
+    }
+    .submit-btn:disabled { opacity: 0.5; cursor: wait; }
+    .status-box {
+      margin-top: 16px;
+      padding: 12px 14px;
+      border-radius: 12px;
+      background: var(--surface-2);
+      font-size: 13px;
+      display: none;
+    }
+    .player-wrap {
+      margin-top: 20px;
+      display: none;
+      text-align: center;
+      background: #05080f;
+      padding: 18px;
+      border-radius: 18px;
+      border: 1px solid rgba(0, 229, 255, 0.3);
+    }
+    video {
+      max-width: 340px;
+      width: 100%;
+      border-radius: 14px;
+      margin-bottom: 14px;
+      background: #000;
+    }
+    .download-link {
+      display: inline-block;
+      background: var(--cyan);
+      color: #05080f;
+      font-weight: 800;
+      text-decoration: none;
+      padding: 11px 22px;
+      border-radius: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Persistent YouTube Promotion Component -->
+    <div class="promo-banner">
+      <div>
+        <div class="promo-tag">[YouTube Promotion] • Official Nexus Creator</div>
+        <div class="promo-title">Subscribe to the creator of Nexus — Arnold Chirchir</div>
+        <div class="promo-sub" id="promoRotatingMsg">Channel: https://youtube.com/@arnold60011 • Support the man who built Nexus AI</div>
+      </div>
+      <div class="promo-actions">
+        <a class="btn-subscribe" href="https://youtube.com/@arnold60011" target="_blank" rel="noopener">Subscribe Now</a>
+        <a class="btn-ig" href="https://www.instagram.com/arnold_60011/" target="_blank" rel="noopener">Follow @arnold_60011</a>
+      </div>
+    </div>
+
+    <div class="hero">
+      <div class="badge-row">
+        <span class="health-pill" id="healthBadge">Checking FFmpeg pipeline…</span>
+        <button class="copy-endpoint-btn" id="copyEndpointBtn">Copy Render URL for Nexus Android App</button>
+      </div>
+      <h1>Nexus Cloud FFmpeg &amp; yt-dlp Video Pipeline</h1>
+      <p class="subtitle">
+        Clip, trim, and 9:16 center-crop videos from external URLs (YouTube, direct MP4, HLS streams) or uploaded video files. Paste this server's URL into your Nexus Android App to unlock cloud FFmpeg processing.
+      </p>
+    </div>
+
+    <div class="tabs">
+      <button class="tab-btn active" id="tabUrl" onclick="switchTab('url')">1. Clip External URL / YouTube</button>
+      <button class="tab-btn" id="tabUpload" onclick="switchTab('upload')">2. Upload &amp; Clip Video File</button>
+    </div>
+
+    <div class="card" id="paneUrl">
+      <label>External Video or YouTube URL</label>
+      <input type="text" id="videoUrlInput" placeholder="https://www.youtube.com/watch?v=... or https://.../video.mp4" />
+      <div class="grid-2">
+        <div>
+          <label>Start Second</label>
+          <input type="number" id="urlStartSec" value="0" min="0" />
+        </div>
+        <div>
+          <label>Clip Duration (Sec)</label>
+          <input type="number" id="urlDurationSec" value="15" min="3" max="60" />
+        </div>
+      </div>
+      <div class="check-row">
+        <input type="checkbox" id="urlCrop916" checked />
+        <span>9:16 Vertical Shorts Crop &amp; Scale (720x1280 H.264 + AAC)</span>
+      </div>
+      <button class="submit-btn" id="clipUrlBtn" onclick="runUrlClip()">Cut Video via FFmpeg</button>
+    </div>
+
+    <div class="card" id="paneUpload" style="display:none;">
+      <label>Select Video File (MP4, MOV, WebM up to 120MB)</label>
+      <input type="file" id="videoFileInput" accept="video/*" />
+      <div class="grid-2">
+        <div>
+          <label>Start Second</label>
+          <input type="number" id="upStartSec" value="0" min="0" />
+        </div>
+        <div>
+          <label>Clip Duration (Sec)</label>
+          <input type="number" id="upDurationSec" value="15" min="3" max="60" />
+        </div>
+      </div>
+      <div class="check-row">
+        <input type="checkbox" id="upCrop916" checked />
+        <span>9:16 Vertical Shorts Crop &amp; Scale (720x1280 H.264 + AAC)</span>
+      </div>
+      <button class="submit-btn" id="clipUploadBtn" onclick="runUploadClip()">Upload &amp; Cut via FFmpeg</button>
+    </div>
+
+    <div class="status-box" id="statusBox"></div>
+
+    <div class="player-wrap" id="playerWrap">
+      <video id="clipPlayer" controls playsinline loop></video>
+      <div>
+        <a id="downloadBtn" class="download-link" href="#" download>Download Clipped MP4</a>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const rotatingMsgs = [
+      "Channel: https://youtube.com/@arnold60011 • Support the man who built the most powerful AI studio",
+      "Channel: https://youtube.com/@arnold60011 • New features drop first on this channel",
+      "Channel: https://youtube.com/@arnold60011 • Join the fastest growing creator empire"
+    ];
+    let msgIdx = 0;
+    setInterval(() => {
+      msgIdx = (msgIdx + 1) % rotatingMsgs.length;
+      document.getElementById("promoRotatingMsg").textContent = rotatingMsgs[msgIdx];
+    }, 4500);
+
+    document.getElementById("copyEndpointBtn").addEventListener("click", async () => {
+      await navigator.clipboard.writeText(window.location.origin);
+      document.getElementById("copyEndpointBtn").textContent = "Copied: " + window.location.origin;
+    });
+
+    fetch("/api/health")
+      .then((r) => r.json())
+      .then((d) => {
+        document.getElementById("healthBadge").textContent =
+          "Online • " + (d.ffmpeg || "FFmpeg") + " • yt-dlp " + (d.ytdlp || "ready");
+      })
+      .catch(() => {
+        document.getElementById("healthBadge").textContent = "Server Starting…";
+      });
+
+    function switchTab(mode) {
+      document.getElementById("paneUrl").style.display = mode === "url" ? "block" : "none";
+      document.getElementById("paneUpload").style.display = mode === "upload" ? "block" : "none";
+      document.getElementById("tabUrl").classList.toggle("active", mode === "url");
+      document.getElementById("tabUpload").classList.toggle("active", mode === "upload");
+    }
+
+    function setStatus(msg, isError) {
+      const box = document.getElementById("statusBox");
+      box.style.display = "block";
+      box.style.color = isError ? "#ff6b81" : "#00e5ff";
+      box.textContent = msg;
+    }
+
+    function showResultClip(clipUrl) {
+      const wrap = document.getElementById("playerWrap");
+      const player = document.getElementById("clipPlayer");
+      const dl = document.getElementById("downloadBtn");
+      player.src = clipUrl;
+      dl.href = clipUrl;
+      wrap.style.display = "block";
+      player.play().catch(() => {});
+    }
+
+    async function runUrlClip() {
+      const url = document.getElementById("videoUrlInput").value.trim();
+      if (!url) return setStatus("Please paste a video or YouTube URL first.", true);
+      const btn = document.getElementById("clipUrlBtn");
+      btn.disabled = true;
+      setStatus("Running yt-dlp + FFmpeg pipeline on external URL…", false);
+      try {
+        const resp = await fetch("/api/clip-url", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            url,
+            startSec: Number(document.getElementById("urlStartSec").value) || 0,
+            durationSec: Number(document.getElementById("urlDurationSec").value) || 15,
+            cropVertical: document.getElementById("urlCrop916").checked
+          })
+        });
+        const data = await resp.json();
+        if (!resp.ok || !data.ok) throw new Error(data.error || "FFmpeg URL clip failed.");
+        setStatus("Clipped MP4 ready (" + Math.round((data.sizeBytes || 0) / 1024) + " KB)!", false);
+        showResultClip(data.clipUrl);
+      } catch (e) {
+        setStatus(e.message, true);
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    async function runUploadClip() {
+      const fileInput = document.getElementById("videoFileInput");
+      if (!fileInput.files || !fileInput.files[0]) {
+        return setStatus("Select a video file from your device first.", true);
+      }
+      const btn = document.getElementById("clipUploadBtn");
+      btn.disabled = true;
+      setStatus("Uploading & running FFmpeg clip pipeline…", false);
+      try {
+        const fd = new FormData();
+        fd.append("video", fileInput.files[0]);
+        fd.append("startSec", document.getElementById("upStartSec").value || "0");
+        fd.append("durationSec", document.getElementById("upDurationSec").value || "15");
+        fd.append("cropVertical", String(document.getElementById("upCrop916").checked));
+        const resp = await fetch("/api/clip-upload", { method: "POST", body: fd });
+        const data = await resp.json();
+        if (!resp.ok || !data.ok) throw new Error(data.error || "FFmpeg upload clip failed.");
+        setStatus("Clipped MP4 ready (" + Math.round((data.sizeBytes || 0) / 1024) + " KB)!", false);
+        showResultClip(data.clipUrl);
+      } catch (e) {
+        setStatus(e.message, true);
+      } finally {
+        btn.disabled = false;
+      }
+    }
+  </script>
+</body>
+</html>

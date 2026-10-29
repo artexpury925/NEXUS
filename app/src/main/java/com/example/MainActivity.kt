@@ -41,6 +41,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
@@ -166,6 +167,14 @@ private fun AuthenticatedNexusWorkspace(
     val latestBuiltCreation by viewModel.latestBuiltCreation.collectAsStateWithLifecycle()
     val youtubeLinkCandidates by viewModel.youtubeLinkCandidates.collectAsStateWithLifecycle()
     val turboModeEnabled by viewModel.turboModeEnabled.collectAsStateWithLifecycle()
+    val verticalCrop916 by viewModel.verticalCrop916.collectAsStateWithLifecycle()
+    val useRenderCloudForUploads by viewModel.useRenderCloudForUploads.collectAsStateWithLifecycle()
+    val renderBaseUrl by viewModel.renderBaseUrl.collectAsStateWithLifecycle()
+    val renderHealthStatus by viewModel.renderHealthStatus.collectAsStateWithLifecycle()
+
+    LaunchedEffect(context) {
+        viewModel.loadRenderPipelineConfig(context)
+    }
 
     val profile = (profileState as? StreamState.Success)?.data
     if (profile != null && !profile.creatorSupportVisited) {
@@ -328,6 +337,13 @@ private fun AuthenticatedNexusWorkspace(
                                 creatorGrowthResult = creatorGrowthResult,
                                 bannerState = bannerState,
                                 initialStudioMode = clipStudioInitialMode,
+                                verticalCrop916 = verticalCrop916,
+                                useRenderCloudForUploads = useRenderCloudForUploads,
+                                renderBaseUrl = renderBaseUrl,
+                                renderHealthStatus = renderHealthStatus,
+                                onToggleVerticalCrop = { viewModel.setVerticalCrop916(it) },
+                                onToggleRenderUploads = { viewModel.setUseRenderCloudForUploads(it) },
+                                onSaveAndTestRenderUrl = { ctx, url -> viewModel.saveAndTestRenderUrl(ctx, url) },
                                 onYouTubeTokenGranted = { viewModel.onYouTubeTokenGranted(it) },
                                 onGenerateAiVideo = { ctx, prompt, dur, style, useArt, useVoice, autoPost, vis ->
                                     viewModel.generateAiVideoFromPrompt(
@@ -364,6 +380,9 @@ private fun AuthenticatedNexusWorkspace(
                                 },
                                 onRenderLinkCandidate = { ctx, cand, autoPost, vis ->
                                     viewModel.renderLinkCandidateToMp4AndPublish(ctx, cand, autoPost, vis)
+                                },
+                                onCutCandidateViaRender = { ctx, cand, autoPost, vis ->
+                                    viewModel.cutCandidateViaRenderFfmpeg(ctx, cand, autoPost, vis)
                                 },
                                 onExportClipToGallery = { ctx, clip ->
                                     viewModel.exportClipToDeviceGallery(ctx, clip)

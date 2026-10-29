@@ -1,0 +1,17 @@
+{
+  "name": "nexus-render-ffmpeg-pipeline",
+  "version": "1.0.0",
+  "description": "Nexus AI FFmpeg & yt-dlp Video Clipping Pipeline and Web Studio by Arnold Chirchir (@arnold60011)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.21.2",
+    "multer": "^1.4.5-lts.1"
+  }
+}

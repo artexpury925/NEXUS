@@ -13,6 +13,9 @@ import com.example.data.model.UserProfile
 import com.example.data.model.VideoClipProject
 import com.example.data.repository.NexusRepository
 import com.example.media.ClipSceneSlide
+import com.example.media.Media3VideoPipeline
+import com.example.media.RenderFfmpegClient
+import com.example.media.RenderHealthStatus
 import com.example.media.VideoClipEngine
 import com.example.youtube.ConnectedYouTubeChannel
 import com.example.youtube.YouTubeStudioManager
@@ -73,6 +76,8 @@ data class YouTubeLinkClipCandidate(
     val sourceVideoTitle: String,
     val sourceUrl: String,
     val timestampRange: String,
+    val startSec: Int,
+    val durationSec: Int,
     val hook: String,
     val title: String,
     val description: String,
@@ -400,6 +405,18 @@ class NexusViewModel(
     private val _youtubeLinkCandidates = MutableStateFlow<List<YouTubeLinkClipCandidate>>(emptyList())
     val youtubeLinkCandidates: StateFlow<List<YouTubeLinkClipCandidate>> = _youtubeLinkCandidates.asStateFlow()
 
+    private val _verticalCrop916 = MutableStateFlow(true)
+    val verticalCrop916: StateFlow<Boolean> = _verticalCrop916.asStateFlow()
+
+    private val _useRenderCloudForUploads = MutableStateFlow(false)
+    val useRenderCloudForUploads: StateFlow<Boolean> = _useRenderCloudForUploads.asStateFlow()
+
+    private val _renderBaseUrl = MutableStateFlow("")
+    val renderBaseUrl: StateFlow<String> = _renderBaseUrl.asStateFlow()
+
+    private val _renderHealthStatus = MutableStateFlow<RenderHealthStatus?>(null)
+    val renderHealthStatus: StateFlow<RenderHealthStatus?> = _renderHealthStatus.asStateFlow()
+
     init {
         viewModelScope.launch {
             try {
@@ -422,6 +439,50 @@ class NexusViewModel(
 
     fun toggleTurboMode() {
         _turboModeEnabled.value = !_turboModeEnabled.value
+    }
+
+    fun setVerticalCrop916(enabled: Boolean) {
+        _verticalCrop916.value = enabled
+    }
+
+    fun setUseRenderCloudForUploads(enabled: Boolean) {
+        _useRenderCloudForUploads.value = enabled
+    }
+
+    fun loadRenderPipelineConfig(context: Context) {
+        val saved = RenderFfmpegClient.getSavedRenderUrl(context.applicationContext)
+        if (_renderBaseUrl.value != saved) {
+            _renderBaseUrl.value = saved
+        }
+        if (saved.isNotEmpty() && _renderHealthStatus.value == null) {
+            viewModelScope.launch {
+                _renderHealthStatus.value = RenderFfmpegClient.checkHealth(saved)
+            }
+        }
+    }
+
+    fun saveAndTestRenderUrl(context: Context, rawUrl: String) {
+        val normalized = RenderFfmpegClient.saveRenderUrl(context.applicationContext, rawUrl)
+        _renderBaseUrl.value = normalized
+        if (normalized.isEmpty()) {
+            _renderHealthStatus.value = RenderHealthStatus(
+                isOnline = false,
+                summary = "Switched to On-Device Jetpack Media3 Video Pipeline",
+                baseUrl = ""
+            )
+            _bannerState.value = GenerationBannerState.Notice("Using standalone On-Device Media3 Video Pipeline.")
+            return
+        }
+        viewModelScope.launch {
+            _bannerState.value = GenerationBannerState.Working("Verifying Render FFmpeg + yt-dlp cloud endpoint…")
+            val health = RenderFfmpegClient.checkHealth(normalized)
+            _renderHealthStatus.value = health
+            _bannerState.value = if (health.isOnline) {
+                GenerationBannerState.Notice("Render Cloud FFmpeg Online: ${health.summary}")
+            } else {
+                GenerationBannerState.Error("Render check: ${health.summary}")
+            }
+        }
     }
 
     fun dismissBanner() {
@@ -1059,15 +1120,48 @@ class NexusViewModel(
         privacyStatus: String = "public"
     ) {
         val cleanPrompt = prompt.trim().ifBlank { "Extract the highest-retention viral highlight clip with FYP hashtags" }
+        val crop916 = _verticalCrop916.value
+        val renderUrl = _renderBaseUrl.value
+        val useCloudUpload = _useRenderCloudForUploads.value && renderUrl.isNotBlank()
+
         viewModelScope.launch(Dispatchers.IO) {
             _bannerState.value = GenerationBannerState.Working(
                 if (sliceThreeHighlights) "⚡ Inspecting uploaded video frames & slicing 3 viral MP4 clips…"
-                else "⚡ Analyzing uploaded video & trimming lossless MP4 clip…"
+                else "⚡ Analyzing uploaded video for Media3 / FFmpeg pipeline…"
             )
             try {
                 val appCtx = context.applicationContext
                 val sourceMeta = VideoClipEngine.inspectVideo(appCtx, sourceVideoUri)
                 val durationLimit = sourceMeta.durationSec.coerceAtLeast(3)
+
+                suspend fun runSingleClipPipeline(startS: Int, endS: Int, labelPrefix: String): File {
+                    val durS = (endS - startS).coerceAtLeast(2)
+                    return if (useCloudUpload) {
+                        _bannerState.value = GenerationBannerState.Working("$labelPrefix via Render Cloud FFmpeg (${startS}s–${endS}s)…")
+                        RenderFfmpegClient.clipUploadedVideoViaRender(
+                            context = appCtx,
+                            baseUrl = renderUrl,
+                            sourceUri = sourceVideoUri,
+                            startSec = startS,
+                            durationSec = durS,
+                            cropVertical916 = crop916
+                        )
+                    } else {
+                        Media3VideoPipeline.processVideoClip(
+                            context = appCtx,
+                            sourceUri = sourceVideoUri,
+                            startSec = startS,
+                            endSec = endS,
+                            cropVertical916 = crop916,
+                            watermarkLabel = "@arnold60011 • NEXUS",
+                            onProgressPercent = { pct ->
+                                _bannerState.value = GenerationBannerState.Working(
+                                    "$labelPrefix via Media3 Pipeline (${startS}s–${endS}s) • $pct%"
+                                )
+                            }
+                        )
+                    }
+                }
 
                 if (sliceThreeHighlights) {
                     val instruction = """
@@ -1098,8 +1192,11 @@ class NexusViewModel(
                         val rawEnd = item.optInt("endSec", (rawStart + 12).coerceAtMost(durationLimit))
                             .coerceIn(rawStart + 2, maxOf(rawStart + 2, durationLimit))
 
-                        _bannerState.value = GenerationBannerState.Working("✂️ Cutting Clip ${i + 1}/$countToSlice (${rawStart}s–${rawEnd}s)…")
-                        val trimmedFile = VideoClipEngine.trimVideoClip(appCtx, sourceVideoUri, rawStart, rawEnd)
+                        val processedFile = runSingleClipPipeline(
+                            startS = rawStart,
+                            endS = rawEnd,
+                            labelPrefix = "✂️ Cutting Clip ${i + 1}/$countToSlice"
+                        )
                         val tagsArr = item.optJSONArray("tags")
                         val tags = if (tagsArr != null) {
                             (0 until tagsArr.length()).map { tagsArr.getString(it).removePrefix("#") }
@@ -1112,12 +1209,13 @@ class NexusViewModel(
                             prompt = "Batch Clip ${i + 1} (${rawStart}s-${rawEnd}s): $cleanPrompt".take(1900),
                             sourceType = "trimmed",
                             durationSec = (rawEnd - rawStart).coerceAtLeast(1),
-                            localFilePath = trimmedFile.absolutePath,
+                            localFilePath = processedFile.absolutePath,
                             tags = tags.take(10)
                         )
                         createdCount++
                     }
-                    _bannerState.value = GenerationBannerState.Notice("Sliced $createdCount lossless MP4 clips from your uploaded video!")
+                    val engineName = if (useCloudUpload) "Render Cloud FFmpeg" else "Media3 Pipeline"
+                    _bannerState.value = GenerationBannerState.Notice("Sliced $createdCount MP4 Shorts ($engineName)!")
                     return@launch
                 }
 
@@ -1148,8 +1246,11 @@ class NexusViewModel(
                 val endSec = (customEndSec ?: json.optInt("endSec", (startSec + 12).coerceAtMost(durationLimit)))
                     .coerceIn(startSec + 2, maxOf(startSec + 2, durationLimit))
 
-                _bannerState.value = GenerationBannerState.Working("✂️ Trimming lossless MP4 clip (${startSec}s–${endSec}s)…")
-                val outputFile = VideoClipEngine.trimVideoClip(appCtx, sourceVideoUri, startSec, endSec)
+                val outputFile = runSingleClipPipeline(
+                    startS = startSec,
+                    endS = endSec,
+                    labelPrefix = "✂️ Processing clip"
+                )
                 val finalDurationSec = (endSec - startSec).coerceAtLeast(1)
 
                 val clipId = repository.saveClipProject(
@@ -1211,7 +1312,7 @@ class NexusViewModel(
         }
     }
 
-    // --- 4C. Universal Video Link Clipper (Direct MP4/Video Stream Download & Trim OR YouTube Link -> 8 Clips + Instant MP4) ---
+    // --- 4C. Universal External URL Video Clipper (Media3 Stream Pipeline + Render Cloud FFmpeg + YouTube 8-Clip Engine) ---
 
     fun clipVideoFromLink(
         context: Context,
@@ -1234,31 +1335,49 @@ class NexusViewModel(
             return
         }
 
-        // Direct Video URL (.mp4, .mov, .webm, CDN stream): download real video & losslessly trim highlight!
+        val normalizedUrl = if (cleanUrl.startsWith("http://") || cleanUrl.startsWith("https://")) {
+            cleanUrl
+        } else {
+            "https://$cleanUrl"
+        }
+        val crop916 = _verticalCrop916.value
+        val renderUrl = _renderBaseUrl.value
+
         viewModelScope.launch(Dispatchers.IO) {
-            _bannerState.value = GenerationBannerState.Working("🌐 Downloading video from link for lossless MP4 clipping…")
             var downloadedFile: File? = null
             try {
                 val appCtx = context.applicationContext
-                downloadedFile = YouTubeStudioManager.downloadDirectVideoToCache(appCtx, cleanUrl)
-                val fileUri = Uri.fromFile(downloadedFile)
-                val sourceMeta = VideoClipEngine.inspectVideo(appCtx, fileUri)
-                val durationLimit = sourceMeta.durationSec.coerceAtLeast(3)
+                val remoteUri = Uri.parse(normalizedUrl)
+                val lowerPath = normalizedUrl.lowercase().substringBefore("?")
+                val isHlsStream = lowerPath.endsWith(".m3u8")
 
-                _bannerState.value = GenerationBannerState.Working("⚡ Analyzing ${durationLimit}s linked video & cutting best highlight…")
+                _bannerState.value = GenerationBannerState.Working("🌐 Inspecting external video URL stream…")
+                val sourceMeta = if (renderUrl.isNotBlank() || isHlsStream) {
+                    Media3VideoPipeline.inspectAnyVideoSource(appCtx, remoteUri)
+                } else {
+                    downloadedFile = YouTubeStudioManager.downloadDirectVideoToCache(appCtx, normalizedUrl)
+                    VideoClipEngine.inspectVideo(appCtx, Uri.fromFile(downloadedFile))
+                }
+                val durationLimit = sourceMeta.durationSec.coerceAtLeast(6)
+
+                _bannerState.value = GenerationBannerState.Working("⚡ Planning viral highlight window (${durationLimit}s source)…")
                 val instruction = """
-                    Analyze this linked video ($durationLimit seconds long) from URL: $cleanUrl
+                    Analyze this external video ($durationLimit seconds long) from URL: $normalizedUrl
                     User Clipping Goal: "${clipPrompt.ifBlank { "Extract the most viral high-retention highlight clip" }}"
                     Pick the optimal startSec and endSec within 0..$durationLimit (6-25s long), plus a viral Shorts title, description with FYP hashtags + nod to Nexus by @arnold60011, and 8 tags.
                 """.trimIndent()
 
                 val resp = withTimeout(AI_TIMEOUT_MS) {
-                    clipPlannerModel.generateContent(
-                        content {
-                            sourceMeta.sampleFrames.forEach { frame -> image(frame) }
-                            text(instruction)
-                        }
-                    )
+                    if (sourceMeta.sampleFrames.isNotEmpty()) {
+                        clipPlannerModel.generateContent(
+                            content {
+                                sourceMeta.sampleFrames.forEach { frame -> image(frame) }
+                                text(instruction)
+                            }
+                        )
+                    } else {
+                        clipPlannerModel.generateContent(instruction)
+                    }
                 }
                 val json = JSONObject(resp.text ?: throw IllegalStateException("Link clip planner returned empty JSON."))
                 val ytTitle = json.getString("youtubeTitle")
@@ -1267,17 +1386,41 @@ class NexusViewModel(
                 val tags = (0 until tagsArr.length()).map { tagsArr.getString(it).removePrefix("#") }
 
                 val rawStart = json.optInt("startSec", 0).coerceIn(0, (durationLimit - 2).coerceAtLeast(0))
-                val rawEnd = json.optInt("endSec", (rawStart + 12).coerceAtMost(durationLimit))
+                val rawEnd = json.optInt("endSec", (rawStart + 14).coerceAtMost(durationLimit))
                     .coerceIn(rawStart + 2, maxOf(rawStart + 2, durationLimit))
+                val finalDuration = (rawEnd - rawStart).coerceAtLeast(2)
 
-                _bannerState.value = GenerationBannerState.Working("✂️ Trimming lossless MP4 clip (${rawStart}s–${rawEnd}s) from link…")
-                val outputFile = VideoClipEngine.trimVideoClip(appCtx, fileUri, rawStart, rawEnd)
-                val finalDuration = (rawEnd - rawStart).coerceAtLeast(1)
+                val outputFile = if (renderUrl.isNotBlank()) {
+                    _bannerState.value = GenerationBannerState.Working("🎬 Cutting external URL via Render Cloud FFmpeg (${rawStart}s–${rawEnd}s)…")
+                    RenderFfmpegClient.clipExternalUrlViaRender(
+                        context = appCtx,
+                        baseUrl = renderUrl,
+                        targetVideoUrl = normalizedUrl,
+                        startSec = rawStart,
+                        durationSec = finalDuration,
+                        cropVertical916 = crop916
+                    )
+                } else {
+                    val pipelineUri = downloadedFile?.let { Uri.fromFile(it) } ?: remoteUri
+                    Media3VideoPipeline.processVideoClip(
+                        context = appCtx,
+                        sourceUri = pipelineUri,
+                        startSec = rawStart,
+                        endSec = rawEnd,
+                        cropVertical916 = crop916,
+                        watermarkLabel = "@arnold60011 • NEXUS",
+                        onProgressPercent = { pct ->
+                            _bannerState.value = GenerationBannerState.Working(
+                                "✂️ Media3 Pipeline clipping URL (${rawStart}s–${rawEnd}s) • $pct%"
+                            )
+                        }
+                    )
+                }
 
                 val clipId = repository.saveClipProject(
                     title = ytTitle,
                     description = ytDesc,
-                    prompt = "Link Clip ($cleanUrl): $clipPrompt".take(1900),
+                    prompt = "Link Clip ($normalizedUrl): $clipPrompt".take(1900),
                     sourceType = "trimmed",
                     durationSec = finalDuration,
                     localFilePath = outputFile.absolutePath,
@@ -1295,7 +1438,7 @@ class NexusViewModel(
                 )
             } catch (e: TimeoutCancellationException) {
                 Log.e(TAG, "Direct link clipping timed out", e)
-                _bannerState.value = GenerationBannerState.Error("Link video download/analysis timed out.")
+                _bannerState.value = GenerationBannerState.Error("Link video processing timed out.")
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -1492,6 +1635,8 @@ class NexusViewModel(
                         sourceVideoTitle = videoTitle,
                         sourceUrl = cleanUrl,
                         timestampRange = tsRange,
+                        startSec = startS,
+                        durationSec = durS,
                         hook = obj.optString("hook", ""),
                         title = obj.optString("title", "Viral Short #${i + 1}"),
                         description = obj.optString("description", ""),
@@ -1503,16 +1648,39 @@ class NexusViewModel(
                 }
                 _youtubeLinkCandidates.value = parsed
 
-                // Immediately render Top Clip #1 into a playable narrated MP4 Short when context is provided!
                 val topCandidate = parsed.firstOrNull()
                 if (contextForAutoRender != null && topCandidate != null) {
-                    _bannerState.value = GenerationBannerState.Working("🎬 Extracted ${parsed.size} clips! Auto-rendering Top Clip #1 MP4…")
-                    renderLinkCandidateInternal(
-                        context = contextForAutoRender,
-                        candidate = topCandidate,
-                        autoPostToYouTube = autoPostFirstClip,
-                        privacyStatus = privacyStatus
-                    )
+                    val renderUrl = _renderBaseUrl.value
+                    if (renderUrl.isNotBlank()) {
+                        _bannerState.value = GenerationBannerState.Working(
+                            "🎬 Extracted ${parsed.size} clips! Cutting Top Clip #1 via Render FFmpeg…"
+                        )
+                        try {
+                            cutCandidateViaRenderInternal(
+                                context = contextForAutoRender,
+                                renderBaseUrl = renderUrl,
+                                candidate = topCandidate,
+                                autoPostToYouTube = autoPostFirstClip,
+                                privacyStatus = privacyStatus
+                            )
+                        } catch (cloudErr: Exception) {
+                            Log.w(TAG, "Render cloud YouTube cut fallback to on-device Short render: ${cloudErr.message}")
+                            renderLinkCandidateInternal(
+                                context = contextForAutoRender,
+                                candidate = topCandidate,
+                                autoPostToYouTube = autoPostFirstClip,
+                                privacyStatus = privacyStatus
+                            )
+                        }
+                    } else {
+                        _bannerState.value = GenerationBannerState.Working("🎬 Extracted ${parsed.size} clips! Auto-rendering Top Clip #1 MP4…")
+                        renderLinkCandidateInternal(
+                            context = contextForAutoRender,
+                            candidate = topCandidate,
+                            autoPostToYouTube = autoPostFirstClip,
+                            privacyStatus = privacyStatus
+                        )
+                    }
                 } else {
                     _bannerState.value = GenerationBannerState.Notice("Extracted ${parsed.size} viral clips from \"$videoTitle\"!")
                 }
@@ -1525,6 +1693,82 @@ class NexusViewModel(
                 _bannerState.value = GenerationBannerState.Error(e.localizedMessage ?: "Could not analyze YouTube URL.")
             }
         }
+    }
+
+    fun cutCandidateViaRenderFfmpeg(
+        context: Context,
+        candidate: YouTubeLinkClipCandidate,
+        autoPostToYouTube: Boolean,
+        privacyStatus: String = "public"
+    ) {
+        val renderUrl = _renderBaseUrl.value
+        if (renderUrl.isBlank()) {
+            _bannerState.value = GenerationBannerState.Error(
+                "Enter your deployed Render URL in the FFmpeg & Media3 Pipeline card first."
+            )
+            return
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                _bannerState.value = GenerationBannerState.Working(
+                    "✂️ Cutting real video Clip #${candidate.index} (${candidate.timestampRange}) via Render FFmpeg…"
+                )
+                cutCandidateViaRenderInternal(
+                    context = context.applicationContext,
+                    renderBaseUrl = renderUrl,
+                    candidate = candidate,
+                    autoPostToYouTube = autoPostToYouTube,
+                    privacyStatus = privacyStatus
+                )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e(TAG, "Render FFmpeg cut failed", e)
+                _bannerState.value = GenerationBannerState.Error(
+                    e.localizedMessage ?: "Render FFmpeg clip failed."
+                )
+            }
+        }
+    }
+
+    private suspend fun cutCandidateViaRenderInternal(
+        context: Context,
+        renderBaseUrl: String,
+        candidate: YouTubeLinkClipCandidate,
+        autoPostToYouTube: Boolean,
+        privacyStatus: String
+    ) {
+        val mp4File = RenderFfmpegClient.clipExternalUrlViaRender(
+            context = context,
+            baseUrl = renderBaseUrl,
+            targetVideoUrl = candidate.sourceUrl,
+            startSec = candidate.startSec,
+            durationSec = candidate.durationSec,
+            cropVertical916 = _verticalCrop916.value
+        )
+        val fullDesc = buildString {
+            appendLine(candidate.description)
+            appendLine("Clipped via Nexus FFmpeg (${candidate.timestampRange}) • Source: ${candidate.sourceUrl}")
+            appendLine("Powered by Nexus Studio (@arnold60011)")
+        }
+        val clipId = repository.saveClipProject(
+            title = candidate.title,
+            description = fullDesc.take(3900),
+            prompt = "Render FFmpeg Clip (${candidate.timestampRange}): ${candidate.sourceUrl}".take(1900),
+            sourceType = "trimmed",
+            durationSec = candidate.durationSec,
+            localFilePath = mp4File.absolutePath,
+            tags = candidate.hashtags
+        )
+        maybeAutoUploadClip(
+            clipId = clipId,
+            outputFile = mp4File,
+            title = candidate.title,
+            description = fullDesc,
+            tags = candidate.hashtags,
+            autoPostToYouTube = autoPostToYouTube,
+            privacyStatus = privacyStatus
+        )
     }
 
     fun renderLinkCandidateToMp4AndPublish(
