@@ -1,0 +1,250 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Authenticated Nexus user profile, creator support onboarding status, and connected YouTube channel metadata.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Firebase Auth UID of the user."
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Display name from Google Sign-In."
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "User email isolated strictly to owner."
+        },
+        "creatorSupportVisited": {
+          "type": "boolean",
+          "description": "Whether the user visited or acknowledged creator Arnold Chirchir (@arnold_60011) on Instagram."
+        },
+        "youtubeChannelTitle": {
+          "type": "string",
+          "description": "Connected YouTube channel title if linked."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation server timestamp via FieldValue.serverTimestamp()."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Last update server timestamp via FieldValue.serverTimestamp()."
+        }
+      },
+      "required": ["userId", "displayName", "email", "creatorSupportVisited", "createdAt", "updatedAt"]
+    },
+    "ChatMessage": {
+      "title": "ChatMessage",
+      "description": "Single conversational or task-execution message in Nexus AI assistant.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Owner Firebase Auth UID."
+        },
+        "role": {
+          "type": "string",
+          "enum": ["user", "model"],
+          "description": "Message sender role."
+        },
+        "text": {
+          "type": "string",
+          "description": "Message markdown/plain content."
+        },
+        "mode": {
+          "type": "string",
+          "enum": ["assistant", "task", "reflection"],
+          "description": "Assistant mode used for the prompt."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation server timestamp via FieldValue.serverTimestamp()."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Update server timestamp via FieldValue.serverTimestamp()."
+        }
+      },
+      "required": ["userId", "role", "text", "mode", "createdAt", "updatedAt"]
+    },
+    "StudioCreation": {
+      "title": "StudioCreation",
+      "description": "Custom HTML5 web application or playable game generated in Nexus Builder.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Owner Firebase Auth UID."
+        },
+        "title": {
+          "type": "string",
+          "description": "Title of the generated web app or game."
+        },
+        "prompt": {
+          "type": "string",
+          "description": "Original user specification prompt."
+        },
+        "category": {
+          "type": "string",
+          "enum": ["webapp", "game", "clone", "dropship"],
+          "description": "Type of interactive build."
+        },
+        "summary": {
+          "type": "string",
+          "description": "Short summary of capabilities and controls."
+        },
+        "htmlCode": {
+          "type": "string",
+          "description": "Self-contained HTML5/CSS/JS bundle rendered in sandboxed preview."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation server timestamp via FieldValue.serverTimestamp()."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Update server timestamp via FieldValue.serverTimestamp()."
+        }
+      },
+      "required": ["userId", "title", "prompt", "category", "summary", "htmlCode", "createdAt", "updatedAt"]
+    },
+    "AutomationWorkflow": {
+      "title": "AutomationWorkflow",
+      "description": "Automated multi-step AI workflow created and executed in Nexus Builder.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Owner Firebase Auth UID."
+        },
+        "title": {
+          "type": "string",
+          "description": "Workflow name."
+        },
+        "goal": {
+          "type": "string",
+          "description": "User automation objective."
+        },
+        "triggerType": {
+          "type": "string",
+          "description": "Workflow trigger label (e.g., Manual, Daily Digest, Content Pipeline)."
+        },
+        "steps": {
+          "type": "array",
+          "description": "Ordered workflow execution step instructions (max 10)."
+        },
+        "lastRunOutput": {
+          "type": "string",
+          "description": "Latest AI execution result across workflow steps."
+        },
+        "runCount": {
+          "type": "integer",
+          "description": "Total number of times this workflow was executed."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation server timestamp via FieldValue.serverTimestamp()."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Update server timestamp via FieldValue.serverTimestamp()."
+        }
+      },
+      "required": ["userId", "title", "goal", "triggerType", "steps", "runCount", "createdAt", "updatedAt"]
+    },
+    "VideoClipProject": {
+      "title": "VideoClipProject",
+      "description": "Trimmed or AI-rendered short-form video clip prepared for YouTube publishing.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Owner Firebase Auth UID."
+        },
+        "title": {
+          "type": "string",
+          "description": "YouTube video title."
+        },
+        "description": {
+          "type": "string",
+          "description": "YouTube video description and hashtags."
+        },
+        "prompt": {
+          "type": "string",
+          "description": "User prompt used to clip or generate the video."
+        },
+        "sourceType": {
+          "type": "string",
+          "enum": ["trimmed", "generated"],
+          "description": "Whether trimmed from gallery video or rendered by Nexus Studio."
+        },
+        "durationSec": {
+          "type": "integer",
+          "description": "Clip duration in seconds."
+        },
+        "localFilePath": {
+          "type": "string",
+          "description": "On-device MP4 file path."
+        },
+        "youtubeStatus": {
+          "type": "string",
+          "enum": ["ready", "uploading", "uploaded", "shared"],
+          "description": "Publishing state for YouTube."
+        },
+        "youtubeVideoId": {
+          "type": "string",
+          "description": "Uploaded YouTube video ID when published via API."
+        },
+        "tags": {
+          "type": "array",
+          "description": "YouTube tags (max 10)."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation server timestamp via FieldValue.serverTimestamp()."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Update server timestamp via FieldValue.serverTimestamp()."
+        }
+      },
+      "required": ["userId", "title", "description", "prompt", "sourceType", "durationSec", "localFilePath", "youtubeStatus", "tags", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "Per-user private profile, creator support status, and connected YouTube metadata."
+    },
+    "/users/{userId}/messages/{messageId}": {
+      "schema": "ChatMessage",
+      "description": "Per-user AI conversation and task execution history."
+    },
+    "/users/{userId}/creations/{creationId}": {
+      "schema": "StudioCreation",
+      "description": "Per-user generated custom web apps and playable games."
+    },
+    "/users/{userId}/workflows/{workflowId}": {
+      "schema": "AutomationWorkflow",
+      "description": "Per-user automated multi-step AI workflows."
+    },
+    "/users/{userId}/clips/{clipId}": {
+      "schema": "VideoClipProject",
+      "description": "Per-user YouTube video clips and upload records."
+    }
+  }
+}

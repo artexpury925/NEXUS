@@ -1,0 +1,229 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Pillar 4.1: Global Safety Net (Default Deny)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Hardened Global Primitives
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidTimestamp(ts) {
+      return ts is timestamp && ts <= request.time;
+    }
+
+    // Entity Validation Helpers (Pillar 2: Anti-Update-Gap)
+    function isValidUserProfile(data) {
+      return data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.userId == request.auth.uid &&
+             data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 100 &&
+             data.email is string && data.email.size() >= 3 && data.email.size() <= 200 &&
+             data.creatorSupportVisited is bool &&
+             (!('youtubeChannelTitle' in data) || data.youtubeChannelTitle == null || (data.youtubeChannelTitle is string && data.youtubeChannelTitle.size() <= 150)) &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidChatMessage(data) {
+      return data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.userId == request.auth.uid &&
+             data.role is string && (data.role == 'user' || data.role == 'model') &&
+             data.text is string && data.text.size() >= 1 && data.text.size() <= 20000 &&
+             data.mode is string && (data.mode == 'assistant' || data.mode == 'task' || data.mode == 'reflection') &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidStudioCreation(data) {
+      return data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.userId == request.auth.uid &&
+             data.title is string && data.title.size() >= 1 && data.title.size() <= 120 &&
+             data.prompt is string && data.prompt.size() >= 1 && data.prompt.size() <= 4000 &&
+             data.category is string && (data.category == 'webapp' || data.category == 'game' || data.category == 'clone' || data.category == 'dropship') &&
+             data.summary is string && data.summary.size() >= 1 && data.summary.size() <= 1000 &&
+             data.htmlCode is string && data.htmlCode.size() >= 1 && data.htmlCode.size() <= 250000 &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidAutomationWorkflow(data) {
+      return data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.userId == request.auth.uid &&
+             data.title is string && data.title.size() >= 1 && data.title.size() <= 120 &&
+             data.goal is string && data.goal.size() >= 1 && data.goal.size() <= 2000 &&
+             data.triggerType is string && data.triggerType.size() >= 1 && data.triggerType.size() <= 60 &&
+             data.steps is list && data.steps.size() >= 1 && data.steps.size() <= 10 &&
+             data.steps[0] is string && data.steps[0].size() >= 1 && data.steps[0].size() <= 1000 &&
+             (!('lastRunOutput' in data) || data.lastRunOutput == null || (data.lastRunOutput is string && data.lastRunOutput.size() <= 20000)) &&
+             data.runCount is int && data.runCount >= 0 &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidVideoClipProject(data) {
+      return data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.userId == request.auth.uid &&
+             data.title is string && data.title.size() >= 1 && data.title.size() <= 100 &&
+             data.description is string && data.description.size() >= 1 && data.description.size() <= 5000 &&
+             data.prompt is string && data.prompt.size() >= 1 && data.prompt.size() <= 2000 &&
+             data.sourceType is string && (data.sourceType == 'trimmed' || data.sourceType == 'generated') &&
+             data.durationSec is int && data.durationSec >= 1 && data.durationSec <= 180 &&
+             data.localFilePath is string && data.localFilePath.size() >= 1 && data.localFilePath.size() <= 500 &&
+             data.youtubeStatus is string && (data.youtubeStatus == 'ready' || data.youtubeStatus == 'uploading' || data.youtubeStatus == 'uploaded' || data.youtubeStatus == 'shared') &&
+             (!('youtubeVideoId' in data) || data.youtubeVideoId == null || (data.youtubeVideoId is string && data.youtubeVideoId.size() <= 64)) &&
+             data.tags is list && data.tags.size() <= 10 &&
+             (data.tags.size() == 0 || (data.tags[0] is string && data.tags[0].size() <= 50)) &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    // 1. User Profile Collection (PII isolated to owner get only; list forbidden)
+    match /users/{userId} {
+      allow get: if isOwner(userId) && isValidId(userId);
+      allow list: if false;
+
+      allow create: if isOwner(userId) &&
+                       isValidId(userId) &&
+                       isValidUserProfile(incoming()) &&
+                       incoming().keys().hasAll(['userId', 'displayName', 'email', 'creatorSupportVisited', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['userId', 'displayName', 'email', 'creatorSupportVisited', 'youtubeChannelTitle', 'createdAt', 'updatedAt']);
+
+      allow update: if isOwner(userId) &&
+                       isValidId(userId) &&
+                       isValidUserProfile(incoming()) &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       (
+                         // Action: Update Creator Support / Profile / YouTube Connection
+                         incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'email', 'creatorSupportVisited', 'youtubeChannelTitle', 'updatedAt'])
+                       );
+
+      allow delete: if isOwner(userId) && isValidId(userId);
+
+      // 2. Chat & Task Messages Subcollection
+      match /messages/{messageId} {
+        allow get: if isOwner(userId) && isValidId(userId) && isValidId(messageId) && existing().userId == request.auth.uid;
+        allow list: if isOwner(userId) && existing().userId == request.auth.uid;
+
+        allow create: if isOwner(userId) &&
+                         isValidId(userId) &&
+                         isValidId(messageId) &&
+                         isValidChatMessage(incoming()) &&
+                         incoming().keys().hasAll(['userId', 'role', 'text', 'mode', 'createdAt', 'updatedAt']) &&
+                         incoming().keys().hasOnly(['userId', 'role', 'text', 'mode', 'createdAt', 'updatedAt']);
+
+        allow update: if isOwner(userId) &&
+                         isValidId(userId) &&
+                         isValidId(messageId) &&
+                         isValidChatMessage(incoming()) &&
+                         incoming().userId == existing().userId &&
+                         incoming().role == existing().role &&
+                         incoming().createdAt == existing().createdAt &&
+                         (
+                           incoming().diff(existing()).affectedKeys().hasOnly(['text', 'updatedAt'])
+                         );
+
+        allow delete: if isOwner(userId) && isValidId(userId) && isValidId(messageId) && existing().userId == request.auth.uid;
+      }
+
+      // 3. Studio Creations (Web Apps & Games) Subcollection
+      match /creations/{creationId} {
+        allow get: if isOwner(userId) && isValidId(userId) && isValidId(creationId) && existing().userId == request.auth.uid;
+        allow list: if isOwner(userId) && existing().userId == request.auth.uid;
+
+        allow create: if isOwner(userId) &&
+                         isValidId(userId) &&
+                         isValidId(creationId) &&
+                         isValidStudioCreation(incoming()) &&
+                         incoming().keys().hasAll(['userId', 'title', 'prompt', 'category', 'summary', 'htmlCode', 'createdAt', 'updatedAt']) &&
+                         incoming().keys().hasOnly(['userId', 'title', 'prompt', 'category', 'summary', 'htmlCode', 'createdAt', 'updatedAt']);
+
+        allow update: if isOwner(userId) &&
+                         isValidId(userId) &&
+                         isValidId(creationId) &&
+                         isValidStudioCreation(incoming()) &&
+                         incoming().userId == existing().userId &&
+                         incoming().createdAt == existing().createdAt &&
+                         (
+                           incoming().diff(existing()).affectedKeys().hasOnly(['title', 'summary', 'htmlCode', 'updatedAt'])
+                         );
+
+        allow delete: if isOwner(userId) && isValidId(userId) && isValidId(creationId) && existing().userId == request.auth.uid;
+      }
+
+      // 4. Automation Workflows Subcollection
+      match /workflows/{workflowId} {
+        allow get: if isOwner(userId) && isValidId(userId) && isValidId(workflowId) && existing().userId == request.auth.uid;
+        allow list: if isOwner(userId) && existing().userId == request.auth.uid;
+
+        allow create: if isOwner(userId) &&
+                         isValidId(userId) &&
+                         isValidId(workflowId) &&
+                         isValidAutomationWorkflow(incoming()) &&
+                         incoming().keys().hasAll(['userId', 'title', 'goal', 'triggerType', 'steps', 'runCount', 'createdAt', 'updatedAt']) &&
+                         incoming().keys().hasOnly(['userId', 'title', 'goal', 'triggerType', 'steps', 'lastRunOutput', 'runCount', 'createdAt', 'updatedAt']);
+
+        allow update: if isOwner(userId) &&
+                         isValidId(userId) &&
+                         isValidId(workflowId) &&
+                         isValidAutomationWorkflow(incoming()) &&
+                         incoming().userId == existing().userId &&
+                         incoming().createdAt == existing().createdAt &&
+                         (
+                           // Action: Record workflow execution output
+                           incoming().diff(existing()).affectedKeys().hasOnly(['lastRunOutput', 'runCount', 'updatedAt']) ||
+                           // Action: Edit workflow definition
+                           incoming().diff(existing()).affectedKeys().hasOnly(['title', 'goal', 'triggerType', 'steps', 'updatedAt'])
+                         );
+
+        allow delete: if isOwner(userId) && isValidId(userId) && isValidId(workflowId) && existing().userId == request.auth.uid;
+      }
+
+      // 5. YouTube Video Clips Subcollection
+      match /clips/{clipId} {
+        allow get: if isOwner(userId) && isValidId(userId) && isValidId(clipId) && existing().userId == request.auth.uid;
+        allow list: if isOwner(userId) && existing().userId == request.auth.uid;
+
+        allow create: if isOwner(userId) &&
+                         isValidId(userId) &&
+                         isValidId(clipId) &&
+                         isValidVideoClipProject(incoming()) &&
+                         incoming().keys().hasAll(['userId', 'title', 'description', 'prompt', 'sourceType', 'durationSec', 'localFilePath', 'youtubeStatus', 'tags', 'createdAt', 'updatedAt']) &&
+                         incoming().keys().hasOnly(['userId', 'title', 'description', 'prompt', 'sourceType', 'durationSec', 'localFilePath', 'youtubeStatus', 'youtubeVideoId', 'tags', 'createdAt', 'updatedAt']);
+
+        allow update: if isOwner(userId) &&
+                         isValidId(userId) &&
+                         isValidId(clipId) &&
+                         isValidVideoClipProject(incoming()) &&
+                         incoming().userId == existing().userId &&
+                         incoming().createdAt == existing().createdAt &&
+                         (
+                           // Action: Update YouTube publish status / video ID / metadata
+                           incoming().diff(existing()).affectedKeys().hasOnly(['title', 'description', 'youtubeStatus', 'youtubeVideoId', 'tags', 'updatedAt'])
+                         );
+
+        allow delete: if isOwner(userId) && isValidId(userId) && isValidId(clipId) && existing().userId == request.auth.uid;
+      }
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "name": "Nexus",
+  "description": "AI assistant, web app and game builder, workflow automator, and YouTube clip studio by Arnold Chirchir.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
