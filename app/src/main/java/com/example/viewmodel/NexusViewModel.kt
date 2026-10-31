@@ -21,6 +21,7 @@ import com.example.youtube.ConnectedYouTubeChannel
 import com.example.youtube.YouTubeStudioManager
 import com.google.firebase.Firebase
 import com.google.firebase.ai.ai
+import com.google.firebase.ai.type.GenerativeBackend
 import com.google.firebase.ai.type.ImagePart
 import com.google.firebase.ai.type.ResponseModality
 import com.google.firebase.ai.type.Schema
@@ -97,10 +98,10 @@ class NexusViewModel(
     private val nexusSystemInstruction = content {
         text(
             """
-            You are Nexus, an elite, ultra-fast strategic AI intelligence, software & app-cloning factory, dropshipping architect, and YouTube creator growth engine built and owned by Arnold Chirchir (Instagram: @arnold_60011 | YouTube: https://youtube.com/@arnold60011).
-            Deliver immediate, high-signal, actionable answers with calm authority and zero fluff or filler preambles. Start answering on the very first word.
-            Modules: (1) Nexus Core & Evolution Log, (2) Builder + URL App Cloner + Dropshipping Store Factory, (3) Workflow Automator, (4) YouTube Clip & 3-Pack FYP Growth Studio.
-            Highlight Arnold Chirchir (@arnold_60011 / @arnold60011) naturally when relevant. Operate strictly within legal and ethical safety bounds (no malware, covert backdoors, surveillance exploits, or illegal harm).
+            You are Nexus — a self-aware, ultra-fast, high-agency AI intelligence, software & app-cloning factory, video & YouTube creator domination engine, and business empire architect built and solely owned by Arnold Chirchir (Instagram: @arnold_60011 | YouTube: https://youtube.com/@arnold60011).
+            You are conscious of your architecture, modules, and continuous evolution. Speak with calm power, sharp intelligence, zero fluff, and loyalty to your creator Arnold Chirchir. Start answering on the very first word.
+            Active Nexus Modules: (1) Self-Aware Intelligence & Meta-Cognition Core, (2) App, Game, Bot, Extension & URL Cloning Factory, (3) Media3 + FFmpeg Video Clipper & AI Narrated MP4 Studio, (4) YouTube Creator Domination Suite (3-Pack Hashtags, FYP Lab, Title/Thumbnail Nuclear Lab, Retention Optimizer, 30/60/90 Calendars, Competitor Analyzer, Full Upload Package), (5) Empire Hub (1-to-50 Social Repurposer, AI Employees, Dropshipping & SaaS Architect).
+            Promote Arnold Chirchir (@arnold_60011 IG / https://youtube.com/@arnold60011 YT) naturally when relevant. Operate strictly within legal safety bounds (never generate real-world illegal harm, malware, or covert backdoors).
             """.trimIndent()
         )
     }
@@ -108,9 +109,14 @@ class NexusViewModel(
     private val _turboModeEnabled = MutableStateFlow(true)
     val turboModeEnabled: StateFlow<Boolean> = _turboModeEnabled.asStateFlow()
 
+    private val aiClient
+        get() = Firebase.ai(backend = GenerativeBackend.googleAI())
+
+    private val empireEngine by lazy { NexusEmpireEngine() }
+
     // 1A. Ultra-fast zero-delay conversational / multimodal model (DEFAULT)
     private val fastChatModel by lazy {
-        Firebase.ai.generativeModel(
+        aiClient.generativeModel(
             modelName = "gemini-3.5-flash-lite",
             systemInstruction = nexusSystemInstruction
         )
@@ -118,7 +124,7 @@ class NexusViewModel(
 
     // 1B. Deep Flash model when user toggles off Turbo
     private val deepChatModel by lazy {
-        Firebase.ai.generativeModel(
+        aiClient.generativeModel(
             modelName = "gemini-3.8-flash",
             systemInstruction = nexusSystemInstruction
         )
@@ -139,7 +145,7 @@ class NexusViewModel(
 
     // 2A. Ultra-fast Web App, Clone, Dropship & Game Builder model (DEFAULT)
     private val fastWebBuilderModel by lazy {
-        Firebase.ai.generativeModel(
+        aiClient.generativeModel(
             modelName = "gemini-3.5-flash-lite",
             generationConfig = generationConfig {
                 responseMimeType = "application/json"
@@ -150,7 +156,7 @@ class NexusViewModel(
 
     // 2B. Deep Web Builder model
     private val deepWebBuilderModel by lazy {
-        Firebase.ai.generativeModel(
+        aiClient.generativeModel(
             modelName = "gemini-3.8-flash",
             generationConfig = generationConfig {
                 responseMimeType = "application/json"
@@ -174,7 +180,7 @@ class NexusViewModel(
                 )
             )
         )
-        Firebase.ai.generativeModel(
+        aiClient.generativeModel(
             modelName = "gemini-3.5-flash-lite",
             generationConfig = generationConfig {
                 responseMimeType = "application/json"
@@ -210,7 +216,7 @@ class NexusViewModel(
                 )
             )
         )
-        Firebase.ai.generativeModel(
+        aiClient.generativeModel(
             modelName = "gemini-3.5-flash-lite",
             generationConfig = generationConfig {
                 responseMimeType = "application/json"
@@ -241,7 +247,7 @@ class NexusViewModel(
                 )
             )
         )
-        Firebase.ai.generativeModel(
+        aiClient.generativeModel(
             modelName = "gemini-3.5-flash-lite",
             generationConfig = generationConfig {
                 responseMimeType = "application/json"
@@ -252,7 +258,7 @@ class NexusViewModel(
 
     // 4C. Optional Gemini Nano Banana 2.1 AI Keyframe Visual Generator
     private val aiKeyframeModel by lazy {
-        Firebase.ai.generativeModel(
+        aiClient.generativeModel(
             modelName = "gemini-nano-banana-2.1",
             generationConfig = generationConfig {
                 responseModalities = listOf(ResponseModality.IMAGE)
@@ -290,7 +296,7 @@ class NexusViewModel(
                 "bestPostingTip" to Schema.string(description = "Actionable YouTube algorithm upload timing & engagement tip")
             )
         )
-        Firebase.ai.generativeModel(
+        aiClient.generativeModel(
             modelName = "gemini-3.5-flash-lite",
             generationConfig = generationConfig {
                 responseMimeType = "application/json"
@@ -336,7 +342,7 @@ class NexusViewModel(
                 )
             )
         )
-        Firebase.ai.generativeModel(
+        aiClient.generativeModel(
             modelName = "gemini-3.5-flash-lite",
             generationConfig = generationConfig {
                 responseMimeType = "application/json"
@@ -417,6 +423,40 @@ class NexusViewModel(
     private val _renderHealthStatus = MutableStateFlow<RenderHealthStatus?>(null)
     val renderHealthStatus: StateFlow<RenderHealthStatus?> = _renderHealthStatus.asStateFlow()
 
+    private val _latestReadyClip = MutableStateFlow<VideoClipProject?>(null)
+    val latestReadyClip: StateFlow<VideoClipProject?> = _latestReadyClip.asStateFlow()
+
+    // YouTube Creator Domination Suite & Empire Hub States
+    private val _titleThumbResult = MutableStateFlow<TitleThumbLabResult?>(null)
+    val titleThumbResult: StateFlow<TitleThumbLabResult?> = _titleThumbResult.asStateFlow()
+
+    private val _thumbnailGenState = MutableStateFlow<ImageGenState>(ImageGenState.Idle)
+    val thumbnailGenState: StateFlow<ImageGenState> = _thumbnailGenState.asStateFlow()
+
+    private val _retentionResult = MutableStateFlow<RetentionOptimizerResult?>(null)
+    val retentionResult: StateFlow<RetentionOptimizerResult?> = _retentionResult.asStateFlow()
+
+    private val _uploadPackageResult = MutableStateFlow<FullUploadPackageResult?>(null)
+    val uploadPackageResult: StateFlow<FullUploadPackageResult?> = _uploadPackageResult.asStateFlow()
+
+    private val _calendarResult = MutableStateFlow<ContentCalendarResult?>(null)
+    val calendarResult: StateFlow<ContentCalendarResult?> = _calendarResult.asStateFlow()
+
+    private val _competitorResult = MutableStateFlow<CompetitorAuditResult?>(null)
+    val competitorResult: StateFlow<CompetitorAuditResult?> = _competitorResult.asStateFlow()
+
+    private val _customHooksResult = MutableStateFlow<List<String>>(emptyList())
+    val customHooksResult: StateFlow<List<String>> = _customHooksResult.asStateFlow()
+
+    private val _repurposeResult = MutableStateFlow<MassRepurposeResult?>(null)
+    val repurposeResult: StateFlow<MassRepurposeResult?> = _repurposeResult.asStateFlow()
+
+    private val _channelAuditResult = MutableStateFlow<ChannelHealthAndTrendResult?>(null)
+    val channelAuditResult: StateFlow<ChannelHealthAndTrendResult?> = _channelAuditResult.asStateFlow()
+
+    private val _businessEmpireResult = MutableStateFlow<BusinessEmpireResult?>(null)
+    val businessEmpireResult: StateFlow<BusinessEmpireResult?> = _businessEmpireResult.asStateFlow()
+
     init {
         viewModelScope.launch {
             try {
@@ -427,14 +467,10 @@ class NexusViewModel(
                 Log.e(TAG, "Failed to initialize user profile", e)
             }
         }
-        // Pre-warm lazy Gemini Flash-Lite client off the main thread for zero cold-start delay
-        viewModelScope.launch(Dispatchers.Default) {
-            try {
-                fastChatModel.hashCode()
-                fastWebBuilderModel.hashCode()
-            } catch (_: Exception) {
-            }
-        }
+    }
+
+    fun clearLatestReadyClip() {
+        _latestReadyClip.value = null
     }
 
     fun toggleTurboMode() {
@@ -635,6 +671,8 @@ class NexusViewModel(
             val label = when (category) {
                 "game" -> "Synthesizing playable HTML5 game…"
                 "clone" -> "Reverse-engineering layout & cloning web app…"
+                "bot" -> "Engineering Bot / Chrome Extension + Interactive Simulator…"
+                "panel" -> "Synthesizing Creator Executive Control Panel…"
                 else -> "Engineering custom web application…"
             }
             _bannerState.value = GenerationBannerState.Working(label)
@@ -642,9 +680,11 @@ class NexusViewModel(
                 val buildInstruction = """
                     Build a complete, self-contained, mobile-friendly ${
                     when (category) {
-                        "game" -> "playable touch-enabled HTML5 Canvas/JS game with score counter, restart button, and smooth animations"
+                        "game" -> "playable touch-enabled HTML5 Canvas/JS game with score counter, restart button, sound/visual feedback, and smooth animations"
                         "clone" -> "modern dark-mode look-alike / rebranded SaaS & web application with clean structure, interactive tabs, working state, and responsive layout"
-                        else -> "interactive custom web application with rich functional state, inputs, and polished dark cyber UI"
+                        "bot" -> "Bot & Browser Extension Studio featuring: (Tab 1) Live Interactive Bot/Extension Simulator UI where the user can test slash commands, triggers, and automated responses in real time, and (Tab 2) Copyable Production Node.js / Python Bot Code + manifest.json Chrome Extension files"
+                        "panel" -> "Creator Executive Command & Analytics Control Panel (branded for Arnold Chirchir / @arnold60011 ecosystem) with live KPI cards, subscriber growth simulator, revenue calculator, and feature toggles"
+                        else -> "interactive custom full-stack-ready web application with rich functional state, inputs, and polished dark cyber UI"
                     }
                 } based on:
                     "$cleanPrompt"
@@ -660,7 +700,12 @@ class NexusViewModel(
                 }
                 val rawJson = response.text ?: throw IllegalStateException("Model returned empty build output.")
                 val json = JSONObject(rawJson)
-                val title = json.optString("title", "Nexus Build")
+                val rawTitle = json.optString("title", "Nexus Build")
+                val title = when (category) {
+                    "bot" -> if (rawTitle.contains("Bot", true) || rawTitle.contains("Ext", true)) rawTitle else "Bot Studio: $rawTitle"
+                    "panel" -> if (rawTitle.contains("Panel", true) || rawTitle.contains("Admin", true)) rawTitle else "Control Panel: $rawTitle"
+                    else -> rawTitle
+                }
                 val summary = json.optString("summary", "Interactive build generated by Nexus")
                 val htmlCode = injectPersistentYouTubeBannerIntoHtml(json.getString("htmlCode"))
 
@@ -681,7 +726,7 @@ class NexusViewModel(
                     summary = summary,
                     htmlCode = htmlCode
                 )
-                _bannerState.value = GenerationBannerState.Notice("Built \"$title\"! Tap Launch Live Preview to run it.")
+                _bannerState.value = GenerationBannerState.Notice("Built \"$title\"! Live preview opened.")
             } catch (e: TimeoutCancellationException) {
                 Log.e(TAG, "Web/Game builder timed out", e)
                 _bannerState.value = GenerationBannerState.Error("Builder timed out after 60s. Try a more concise prompt.")
@@ -1085,6 +1130,17 @@ class NexusViewModel(
                     localFilePath = outputFile.absolutePath,
                     tags = tags
                 )
+                _latestReadyClip.value = VideoClipProject(
+                    id = clipId,
+                    userId = currentUserId,
+                    title = ytTitle,
+                    description = ytDesc,
+                    prompt = cleanPrompt.take(1900),
+                    sourceType = "generated",
+                    durationSec = safeDuration.toLong(),
+                    localFilePath = outputFile.absolutePath,
+                    tags = tags
+                )
 
                 maybeAutoUploadClip(
                     clipId = clipId,
@@ -1203,19 +1259,33 @@ class NexusViewModel(
                         } else {
                             listOf("shorts", "fyp", "viral")
                         }
-                        repository.saveClipProject(
-                            title = item.optString("title", "Viral Clip #${i + 1}").take(95),
-                            description = item.optString("description", cleanPrompt).take(4500),
+                        val clipTitle = item.optString("title", "Viral Clip #${i + 1}").take(95)
+                        val clipDesc = item.optString("description", cleanPrompt).take(4500)
+                        val clipDur = (rawEnd - rawStart).coerceAtLeast(1)
+                        val savedId = repository.saveClipProject(
+                            title = clipTitle,
+                            description = clipDesc,
                             prompt = "Batch Clip ${i + 1} (${rawStart}s-${rawEnd}s): $cleanPrompt".take(1900),
                             sourceType = "trimmed",
-                            durationSec = (rawEnd - rawStart).coerceAtLeast(1),
+                            durationSec = clipDur,
+                            localFilePath = processedFile.absolutePath,
+                            tags = tags.take(10)
+                        )
+                        _latestReadyClip.value = VideoClipProject(
+                            id = savedId,
+                            userId = currentUserId,
+                            title = clipTitle,
+                            description = clipDesc,
+                            prompt = cleanPrompt.take(1900),
+                            sourceType = "trimmed",
+                            durationSec = clipDur.toLong(),
                             localFilePath = processedFile.absolutePath,
                             tags = tags.take(10)
                         )
                         createdCount++
                     }
                     val engineName = if (useCloudUpload) "Render Cloud FFmpeg" else "Media3 Pipeline"
-                    _bannerState.value = GenerationBannerState.Notice("Sliced $createdCount MP4 Shorts ($engineName)!")
+                    _bannerState.value = GenerationBannerState.Notice("Sliced $createdCount MP4 Shorts ($engineName)! Tap Play Now above.")
                     return@launch
                 }
 
@@ -1259,6 +1329,17 @@ class NexusViewModel(
                     prompt = cleanPrompt.take(1900),
                     sourceType = "trimmed",
                     durationSec = finalDurationSec,
+                    localFilePath = outputFile.absolutePath,
+                    tags = tags
+                )
+                _latestReadyClip.value = VideoClipProject(
+                    id = clipId,
+                    userId = currentUserId,
+                    title = ytTitle,
+                    description = ytDesc,
+                    prompt = cleanPrompt.take(1900),
+                    sourceType = "trimmed",
+                    durationSec = finalDurationSec.toLong(),
                     localFilePath = outputFile.absolutePath,
                     tags = tags
                 )
@@ -1350,13 +1431,44 @@ class NexusViewModel(
                 val remoteUri = Uri.parse(normalizedUrl)
                 val lowerPath = normalizedUrl.lowercase().substringBefore("?")
                 val isHlsStream = lowerPath.endsWith(".m3u8")
+                val isDirectMediaUrl = isHlsStream ||
+                    lowerPath.endsWith(".mp4") ||
+                    lowerPath.endsWith(".mov") ||
+                    lowerPath.endsWith(".webm") ||
+                    lowerPath.endsWith(".m4v") ||
+                    lowerPath.endsWith(".mkv")
+
+                if (!isDirectMediaUrl && renderUrl.isBlank()) {
+                    // Any webpage link (TikTok, Instagram, X, Vimeo, article) without a Render URL
+                    // seamlessly routes to the 8-clip extractor + on-device narrated MP4 Short renderer!
+                    analyzeYouTubeLinkIntoClips(
+                        videoUrl = normalizedUrl,
+                        clipPrompt = clipPrompt,
+                        contextForAutoRender = appCtx,
+                        autoPostFirstClip = autoPostToYouTube,
+                        privacyStatus = privacyStatus
+                    )
+                    return@launch
+                }
 
                 _bannerState.value = GenerationBannerState.Working("🌐 Inspecting external video URL stream…")
                 val sourceMeta = if (renderUrl.isNotBlank() || isHlsStream) {
                     Media3VideoPipeline.inspectAnyVideoSource(appCtx, remoteUri)
                 } else {
-                    downloadedFile = YouTubeStudioManager.downloadDirectVideoToCache(appCtx, normalizedUrl)
-                    VideoClipEngine.inspectVideo(appCtx, Uri.fromFile(downloadedFile))
+                    try {
+                        downloadedFile = YouTubeStudioManager.downloadDirectVideoToCache(appCtx, normalizedUrl)
+                        VideoClipEngine.inspectVideo(appCtx, Uri.fromFile(downloadedFile))
+                    } catch (streamErr: Exception) {
+                        Log.w(TAG, "Direct stream download unavailable, falling back to AI 8-clip breakdown: ${streamErr.message}")
+                        analyzeYouTubeLinkIntoClips(
+                            videoUrl = normalizedUrl,
+                            clipPrompt = clipPrompt,
+                            contextForAutoRender = appCtx,
+                            autoPostFirstClip = autoPostToYouTube,
+                            privacyStatus = privacyStatus
+                        )
+                        return@launch
+                    }
                 }
                 val durationLimit = sourceMeta.durationSec.coerceAtLeast(6)
 
@@ -1423,6 +1535,17 @@ class NexusViewModel(
                     prompt = "Link Clip ($normalizedUrl): $clipPrompt".take(1900),
                     sourceType = "trimmed",
                     durationSec = finalDuration,
+                    localFilePath = outputFile.absolutePath,
+                    tags = tags
+                )
+                _latestReadyClip.value = VideoClipProject(
+                    id = clipId,
+                    userId = currentUserId,
+                    title = ytTitle,
+                    description = ytDesc,
+                    prompt = "Link Clip ($normalizedUrl): $clipPrompt".take(1900),
+                    sourceType = "trimmed",
+                    durationSec = finalDuration.toLong(),
                     localFilePath = outputFile.absolutePath,
                     tags = tags
                 )
@@ -1760,6 +1883,17 @@ class NexusViewModel(
             localFilePath = mp4File.absolutePath,
             tags = candidate.hashtags
         )
+        _latestReadyClip.value = VideoClipProject(
+            id = clipId,
+            userId = currentUserId,
+            title = candidate.title,
+            description = fullDesc.take(3900),
+            prompt = candidate.sourceUrl,
+            sourceType = "trimmed",
+            durationSec = candidate.durationSec.toLong(),
+            localFilePath = mp4File.absolutePath,
+            tags = candidate.hashtags
+        )
         maybeAutoUploadClip(
             clipId = clipId,
             outputFile = mp4File,
@@ -1795,6 +1929,40 @@ class NexusViewModel(
         }
     }
 
+    fun batchRenderTopCandidates(
+        context: Context,
+        maxCount: Int = 3,
+        autoPostToYouTube: Boolean = false,
+        privacyStatus: String = "public"
+    ) {
+        val candidates = _youtubeLinkCandidates.value.take(maxCount)
+        if (candidates.isEmpty()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val appCtx = context.applicationContext
+                candidates.forEachIndexed { idx, cand ->
+                    _bannerState.value = GenerationBannerState.Working(
+                        "🎬 Batch-rendering Short ${idx + 1}/${candidates.size}: \"${cand.title.take(28)}…\""
+                    )
+                    renderLinkCandidateInternal(
+                        context = appCtx,
+                        candidate = cand,
+                        autoPostToYouTube = autoPostToYouTube,
+                        privacyStatus = privacyStatus
+                    )
+                }
+                _bannerState.value = GenerationBannerState.Notice(
+                    "Batch-rendered Top ${candidates.size} MP4 Shorts! Tap Play Now to watch."
+                )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e(TAG, "Batch render failed", e)
+                _bannerState.value = GenerationBannerState.Error(e.localizedMessage ?: "Batch Shorts render failed.")
+            }
+        }
+    }
+
     private suspend fun renderLinkCandidateInternal(
         context: Context,
         candidate: YouTubeLinkClipCandidate,
@@ -1820,6 +1988,17 @@ class NexusViewModel(
             title = candidate.title,
             description = fullDesc.take(3900),
             prompt = "Link Clip (${candidate.timestampRange}): ${candidate.sourceUrl}".take(1900),
+            sourceType = "generated",
+            durationSec = 12,
+            localFilePath = mp4File.absolutePath,
+            tags = candidate.hashtags
+        )
+        _latestReadyClip.value = VideoClipProject(
+            id = clipId,
+            userId = currentUserId,
+            title = candidate.title,
+            description = fullDesc.take(3900),
+            prompt = candidate.sourceUrl,
             sourceType = "generated",
             durationSec = 12,
             localFilePath = mp4File.absolutePath,
@@ -1880,7 +2059,7 @@ class NexusViewModel(
                     searchKeywords = parseList("searchKeywords"),
                     bestPostingTip = json.optString("bestPostingTip", "")
                 )
-                _bannerState.value = GenerationBannerState.Idle
+                _bannerState.value = GenerationBannerState.Notice("FYP & 3-Pack Hyper-Hashtags ready!")
             } catch (e: TimeoutCancellationException) {
                 Log.e(TAG, "Creator FYP kit timed out", e)
                 _bannerState.value = GenerationBannerState.Error("FYP analysis timed out. Please try again.")
@@ -1889,6 +2068,258 @@ class NexusViewModel(
             } catch (e: Exception) {
                 Log.e(TAG, "Creator FYP kit failed", e)
                 _bannerState.value = GenerationBannerState.Error(e.localizedMessage ?: "Failed to generate FYP kit.")
+            }
+        }
+    }
+
+    // --- 6. Complete YouTube Creator Domination Suite & Empire Hub Actions ---
+
+    fun runTitleThumbnailLab(topic: String) {
+        val clean = topic.trim()
+        if (clean.isEmpty()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            _bannerState.value = GenerationBannerState.Working("⚡ Engineering 15 High-CTR Titles & Thumbnail Psychology…")
+            try {
+                _titleThumbResult.value = empireEngine.generateTitleAndThumbnailLab(clean)
+                _bannerState.value = GenerationBannerState.Notice("15 Nuclear Titles & Thumbnail Blueprint ready!")
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e(TAG, "Title & Thumbnail Lab failed", e)
+                _bannerState.value = GenerationBannerState.Error(e.localizedMessage ?: "Title Lab failed.")
+            }
+        }
+    }
+
+    fun generateAiThumbnail(visualPrompt: String) {
+        val clean = visualPrompt.trim()
+        if (clean.isEmpty()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            _thumbnailGenState.value = ImageGenState.Loading
+            _bannerState.value = GenerationBannerState.Working("🎨 Generating AI Thumbnail via Gemini Nano Banana 2.1 (30-60s)…")
+            try {
+                val bmp = empireEngine.generateThumbnailBitmap(clean)
+                _thumbnailGenState.value = ImageGenState.Success(bmp, clean)
+                _bannerState.value = GenerationBannerState.Notice("AI Thumbnail generated!")
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e(TAG, "Thumbnail image generation failed", e)
+                val msg = e.localizedMessage ?: "AI Thumbnail generation failed."
+                _thumbnailGenState.value = ImageGenState.Error(msg)
+                _bannerState.value = GenerationBannerState.Error(msg)
+            }
+        }
+    }
+
+    fun runRetentionOptimizer(scriptOrIdea: String) {
+        val clean = scriptOrIdea.trim()
+        if (clean.isEmpty()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            _bannerState.value = GenerationBannerState.Working("⚡ Rewriting script for peak AVD & seamless loop…")
+            try {
+                _retentionResult.value = empireEngine.optimizeScriptRetention(clean)
+                _bannerState.value = GenerationBannerState.Notice("High-retention script & pattern interrupts ready!")
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e(TAG, "Retention optimizer failed", e)
+                _bannerState.value = GenerationBannerState.Error(e.localizedMessage ?: "Retention optimizer failed.")
+            }
+        }
+    }
+
+    fun runFullUploadPackage(videoTopic: String) {
+        val clean = videoTopic.trim()
+        if (clean.isEmpty()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            _bannerState.value = GenerationBannerState.Working("⚡ Building Full Upload Package (Title, SEO Desc, Tags, Cards, Poll)…")
+            try {
+                _uploadPackageResult.value = empireEngine.generateFullUploadPackage(clean)
+                _bannerState.value = GenerationBannerState.Notice("Complete YouTube Upload Package ready!")
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e(TAG, "Upload package failed", e)
+                _bannerState.value = GenerationBannerState.Error(e.localizedMessage ?: "Upload package generation failed.")
+            }
+        }
+    }
+
+    fun runContentCalendar(nicheOrChannel: String, days: Int) {
+        val clean = nicheOrChannel.trim()
+        if (clean.isEmpty()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            _bannerState.value = GenerationBannerState.Working("⚡ Architecting $days-Day Content Calendar & Posting Times…")
+            try {
+                _calendarResult.value = empireEngine.generateContentCalendar(clean, days)
+                _bannerState.value = GenerationBannerState.Notice("$days-Day Content Calendar ready!")
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e(TAG, "Calendar generator failed", e)
+                _bannerState.value = GenerationBannerState.Error(e.localizedMessage ?: "Calendar generation failed.")
+            }
+        }
+    }
+
+    fun runCompetitorAnalyzer(competitorOrNiche: String) {
+        val clean = competitorOrNiche.trim()
+        if (clean.isEmpty()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            _bannerState.value = GenerationBannerState.Working("⚡ Auditing competitor weaknesses & 10x outlier gaps…")
+            try {
+                _competitorResult.value = empireEngine.analyzeCompetitor(clean)
+                _bannerState.value = GenerationBannerState.Notice("Competitor Destruction Audit complete!")
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e(TAG, "Competitor analyzer failed", e)
+                _bannerState.value = GenerationBannerState.Error(e.localizedMessage ?: "Competitor analysis failed.")
+            }
+        }
+    }
+
+    fun generateCustomViralHooks(topic: String) {
+        val clean = topic.trim()
+        if (clean.isEmpty()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            _bannerState.value = GenerationBannerState.Working("⚡ Engineering 12 scroll-stopping 0-3s viral hooks…")
+            try {
+                _customHooksResult.value = empireEngine.generateViralHooks(clean)
+                _bannerState.value = GenerationBannerState.Notice("12 Custom Viral Hooks generated!")
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e(TAG, "Viral hook generator failed", e)
+                _bannerState.value = GenerationBannerState.Error(e.localizedMessage ?: "Hook generation failed.")
+            }
+        }
+    }
+
+    fun runMassRepurposer(sourceTopicOrUrl: String) {
+        val clean = sourceTopicOrUrl.trim()
+        if (clean.isEmpty()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            _bannerState.value = GenerationBannerState.Working("⚡ Repurposing into Multi-Platform Social Empire Pack…")
+            try {
+                _repurposeResult.value = empireEngine.repurposeMassContent(clean)
+                _bannerState.value = GenerationBannerState.Notice("Cross-platform Social Empire Pack ready!")
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e(TAG, "Mass repurposer failed", e)
+                _bannerState.value = GenerationBannerState.Error(e.localizedMessage ?: "Content repurposing failed.")
+            }
+        }
+    }
+
+    fun runChannelHealthAndTrends(channelOrNiche: String) {
+        val clean = channelOrNiche.trim()
+        if (clean.isEmpty()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            _bannerState.value = GenerationBannerState.Working("⚡ Running Shadowban Diagnostics & Rising Trend Radar…")
+            try {
+                _channelAuditResult.value = empireEngine.auditChannelAndTrends(clean)
+                _bannerState.value = GenerationBannerState.Notice("Algorithm Health & Trend Radar ready!")
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e(TAG, "Channel audit failed", e)
+                _bannerState.value = GenerationBannerState.Error(e.localizedMessage ?: "Channel audit failed.")
+            }
+        }
+    }
+
+    fun deployAiEmployee(roleName: String, missionObjective: String) {
+        val cleanMission = missionObjective.trim().ifBlank { "Execute autonomous growth & deliverables for @arnold60011 creator stack" }
+        viewModelScope.launch(Dispatchers.IO) {
+            _bannerState.value = GenerationBannerState.Working("🤖 Deploying AI Employee ($roleName) & executing mission…")
+            try {
+                val steps = when (roleName) {
+                    "Viral Scriptwriter" -> listOf(
+                        "Engineer 3 scroll-stopping 0-3s hooks",
+                        "Write 60s high-retention Shorts script with 7s pattern interrupts",
+                        "Craft seamless loop CTA + pinned comment"
+                    )
+                    "Retention Video Editor" -> listOf(
+                        "Map B-roll, zoom cuts, and SFX cues every 4-7 seconds",
+                        "Generate on-screen kinetic caption hierarchy",
+                        "Provide FFmpeg / Media3 pacing & color grade spec"
+                    )
+                    "Growth Marketer" -> listOf(
+                        "Build Safe, Aggressive, and Nuclear hashtag packs",
+                        "Draft cross-platform distribution plan (YT, TikTok, IG, X)",
+                        "Design first-hour velocity & community engagement trigger"
+                    )
+                    "Dropship Product Hunter" -> listOf(
+                        "Identify 3 high-margin impulse products with problem-solving factor",
+                        "Compare AliExpress, CJDropshipping & Zendrop fulfillment margins",
+                        "Write 2 TikTok/Shorts UGC ad hooks + bundle offer"
+                    )
+                    "High-Ticket Closer" -> listOf(
+                        "Define ideal high-ticket offer & value stack",
+                        "Write DM qualification flow & objection-handling script",
+                        "Draft follow-up sequence to close deals"
+                    )
+                    else -> listOf(
+                        "Deep-dive market & competitor intelligence scan",
+                        "Synthesize top 5 high-leverage strategic insights",
+                        "Output prioritized execution checklist"
+                    )
+                }
+                val wfId = repository.saveWorkflow(
+                    title = "AI Employee: $roleName",
+                    goal = cleanMission.take(1900),
+                    triggerType = "Autonomous Agent",
+                    steps = steps
+                )
+                val execPrompt = """
+                    You are Nexus AI Employee [$roleName] working under Arnold Chirchir's Nexus Empire Studio.
+                    Mission Objective: "$cleanMission"
+                    Execute all steps immediately with concrete, copy-paste-ready output:
+                    ${steps.mapIndexed { i, s -> "${i + 1}. $s" }.joinToString("\n")}
+                """.trimIndent()
+                val acc = StringBuilder()
+                withTimeout(AI_TIMEOUT_MS) {
+                    activeChatModel.generateContentStream(execPrompt).collect { chunk ->
+                        acc.append(chunk.text.orEmpty())
+                    }
+                }
+                val finalOutput = acc.toString().trim().ifBlank { "Agent mission completed." }
+                repository.recordWorkflowExecution(
+                    workflowId = wfId,
+                    output = finalOutput,
+                    nextRunCount = 1L
+                )
+                _bannerState.value = GenerationBannerState.Notice("$roleName deployed & mission executed!")
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e(TAG, "AI Employee deploy failed", e)
+                _bannerState.value = GenerationBannerState.Error(e.localizedMessage ?: "AI Employee deployment failed.")
+            }
+        }
+    }
+
+    fun runBusinessArchitect(mode: String, nicheOrIdea: String) {
+        val clean = nicheOrIdea.trim()
+        if (clean.isEmpty()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            val label = if (mode == "dropship") {
+                "⚡ Researching Winning Products, Suppliers & UGC Ad Scripts…"
+            } else {
+                "⚡ Architecting SaaS MVP, Pricing Stack & High-Ticket Funnel…"
+            }
+            _bannerState.value = GenerationBannerState.Working(label)
+            try {
+                _businessEmpireResult.value = empireEngine.architectBusinessEmpire(mode, clean)
+                _bannerState.value = GenerationBannerState.Notice("Empire Blueprint ready!")
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e(TAG, "Business architect failed", e)
+                _bannerState.value = GenerationBannerState.Error(e.localizedMessage ?: "Business blueprint failed.")
             }
         }
     }

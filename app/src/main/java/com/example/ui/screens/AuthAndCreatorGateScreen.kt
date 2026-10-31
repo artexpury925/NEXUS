@@ -308,16 +308,6 @@ fun CreatorOnboardingGateScreen(
     var instagramVisited by remember { mutableStateOf(false) }
     var youtubeVisited by remember { mutableStateOf(false) }
 
-    // Auto-redirect new account creations to Arnold Chirchir's Instagram @arnold_60011 once on arrival
-    var autoRedirectTriggered by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) {
-        if (!autoRedirectTriggered) {
-            autoRedirectTriggered = true
-            instagramVisited = true
-            openExternalUrl(context, instagramUrl, "com.instagram.android")
-        }
-    }
-
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -543,7 +533,7 @@ fun PersistentYouTubePromoCard(
 
     val rotatingMessages = remember {
         listOf(
-            "Support the creator behind the Nexus AI ecosystem",
+            "Support the man who built the most powerful AI on the internet",
             "New features drop first on this channel",
             "Join the fastest growing creator empire"
         )

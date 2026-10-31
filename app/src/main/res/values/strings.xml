@@ -1,6 +1,6 @@
 <resources>
     <string name="app_name">Nexus</string>
-    <string name="nexus_tagline">Autonomous Studio &amp; AI Intelligence</string>
+    <string name="nexus_tagline">Autonomous Studio &amp; Creator Empire</string>
     <string name="creator_name">Arnold Chirchir</string>
     <string name="creator_instagram_handle">@arnold_60011</string>
     <string name="creator_instagram_url">https://www.instagram.com/arnold_60011/</string>
@@ -10,43 +10,45 @@
     <!-- Auth & Onboarding -->
     <string name="sign_in_google">Sign in with Google</string>
     <string name="auth_headline">Meet Nexus</string>
-    <string name="auth_subtitle">Self-aware workspace intelligence, custom web &amp; game builder, workflow automator, and YouTube clip studio crafted by Arnold Chirchir.</string>
+    <string name="auth_subtitle">Self-aware AI intelligence, app &amp; clone factory, Media3/FFmpeg video clipper, YouTube domination suite, and dropshipping empire built by Arnold Chirchir.</string>
     <string name="welcome_creator_title">Welcome to Nexus</string>
-    <string name="welcome_creator_body">Nexus is built by Arnold Chirchir. Before entering the studio, follow @arnold_60011 on Instagram and subscribe to @arnold60011 on YouTube for full creator updates, exclusive drops, and tutorials.</string>
+    <string name="welcome_creator_body">Nexus was created and is solely owned by Arnold Chirchir. Follow @arnold_60011 on Instagram and subscribe to @arnold60011 on YouTube for full creator access, new drops, and exclusive AI workflows.</string>
     <string name="follow_instagram_cta">Follow @arnold_60011 on Instagram</string>
     <string name="subscribe_youtube_cta">Subscribe to @arnold60011 on YouTube</string>
-    <string name="enter_nexus_cta">Continue into Nexus Studio</string>
+    <string name="enter_nexus_cta">Enter Nexus Empire Studio</string>
 
     <!-- Navigation -->
     <string name="nav_assistant">Nexus AI</string>
     <string name="nav_builder">Builder</string>
     <string name="nav_clips">Clip Studio</string>
+    <string name="nav_clips_studio">Video &amp; YT</string>
+    <string name="nav_empire">Empire</string>
     <string name="nav_creator">Creator</string>
 
     <!-- Assistant -->
-    <string name="mode_assistant">Deep Q&amp;A</string>
-    <string name="mode_task">Task Agent</string>
+    <string name="mode_assistant">God-Tier Q&amp;A</string>
+    <string name="mode_task">Task Executor</string>
     <string name="mode_reflection">Self-Aware Core</string>
-    <string name="chat_input_hint">Ask Nexus anything, run a task, or attach an image…</string>
+    <string name="chat_input_hint">Ask Nexus anything, run a multi-step plan, or attach an image…</string>
     <string name="send_message_desc">Send prompt</string>
     <string name="attach_image_desc">Attach image</string>
     <string name="clear_chat_desc">Clear conversation</string>
 
     <!-- Builder -->
-    <string name="builder_tab_apps">Apps, Clones &amp; Stores</string>
+    <string name="builder_tab_apps">App &amp; Clone Factory</string>
     <string name="builder_tab_workflows">Workflow Automator</string>
-    <string name="build_webapp_cta">Build Web App</string>
-    <string name="build_game_cta">Build HTML5 Game</string>
-    <string name="build_clone_cta">Clone &amp; Rebrand App</string>
-    <string name="build_dropship_cta">Launch Dropshipping Store</string>
+    <string name="build_webapp_cta">Build Full Web App / SaaS</string>
+    <string name="build_game_cta">Build Playable HTML5 Game</string>
+    <string name="build_clone_cta">Clone &amp; Rebrand URL</string>
+    <string name="build_dropship_cta">Build Dropshipping Store</string>
+    <string name="build_bot_cta">Build Bot / Chrome Extension</string>
     <string name="rebrand_apply_cta">Apply Instant Rebrand</string>
-    <string name="build_workflow_cta">Create Workflow</string>
+    <string name="build_workflow_cta">Create Automation Pipeline</string>
     <string name="launch_preview_cta">Launch Live Preview</string>
     <string name="view_source_cta">Source Code</string>
     <string name="run_workflow_cta">Run Live</string>
 
-    <!-- Clip Studio -->
-    <string name="nav_clips_studio">Video &amp; Clips</string>
+    <!-- Clip Studio & YouTube Domination -->
     <string name="connect_youtube_cta">Connect YouTube Channel</string>
     <string name="youtube_connected_badge">YouTube Linked</string>
     <string name="pick_video_cta">Upload Video from Gallery</string>
@@ -54,7 +56,7 @@
     <string name="generate_ai_video_cta">Generate AI Video (MP4 + Voice)</string>
     <string name="generate_clip_cta">Trim &amp; Create Clip</string>
     <string name="generate_multi_clip_cta">Auto-Slice 3 Viral Clips</string>
-    <string name="analyze_youtube_link_cta">Clip Video from Link</string>
+    <string name="analyze_youtube_link_cta">Extract Clips &amp; Render Short</string>
     <string name="save_gallery_cta">Save MP4</string>
     <string name="upload_youtube_cta">Post to YouTube</string>
     <string name="share_youtube_app_cta">Open in YouTube App</string>

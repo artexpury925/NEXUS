@@ -11,6 +11,7 @@ import android.graphics.Paint
 import android.graphics.RectF
 import android.graphics.Shader
 import android.graphics.Typeface
+import android.media.Image
 import android.media.MediaCodec
 import android.media.MediaCodecInfo
 import android.media.MediaExtractor
@@ -61,7 +62,8 @@ data class VideoSourceMetadata(
     val sampleFrames: List<Bitmap> = emptyList()
 )
 
-private data class EncodedAudioPacket(
+private data class EncodedMediaPacket(
+    val isAudio: Boolean,
     val bytes: ByteArray,
     val presentationTimeUs: Long,
     val flags: Int
@@ -216,8 +218,9 @@ object VideoClipEngine {
 
     /**
      * Renders an AI-scripted vertical 720x1280 H.264 + AAC Audio MP4 video directly on-device
-     * with spoken TTS voiceover narration, ambient harmonic pulse, optional AI/source keyframe
-     * Ken Burns camera motion, live waveform equalizer, and word-by-word dynamic captions.
+     * using exact monotonic YUV420 presentation timestamps (`frameIdx * 1_000_000L / fps`) and
+     * timestamp-interleaved muxing so every generated video plays smoothly with full duration and
+     * synchronized spoken TTS voiceover on all Android devices and emulators.
      */
     suspend fun renderPromptShortVideo(
         context: Context,
@@ -230,7 +233,7 @@ object VideoClipEngine {
     ): File = withContext(Dispatchers.IO) {
         val width = 720
         val height = 1280
-        val fps = 24
+        val fps = 15
         val safeDurationSec = durationSec.coerceIn(6, 24)
         val totalFrames = safeDurationSec * fps
 
@@ -263,131 +266,204 @@ object VideoClipEngine {
             null
         }
 
+        // 2. Encode H.264 video frames with exact monotonic presentation timestamps (YUV420Flexible)
+        val (videoOutputFormat, videoPackets) = encodeFramesToH264(
+            width = width,
+            height = height,
+            fps = fps,
+            totalFrames = totalFrames,
+            scenes = effectiveScenes,
+            pcmSamples = pcmSamples,
+            visualStyle = visualStyle,
+            backgroundKeyframe = backgroundKeyframe,
+            hashtagsLine = hashtagsLine
+        )
+
+        // 3. Interleave Video + Audio packets in presentationTimeUs order into MP4 container
         val clipsDir = File(context.filesDir, "clips").apply { mkdirs() }
         val outputFile = File(clipsDir, "nexus_short_${UUID.randomUUID().toString().take(8)}.mp4")
 
+        var muxer: MediaMuxer? = null
+        try {
+            muxer = MediaMuxer(outputFile.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+            val videoTrackIndex = muxer.addTrack(videoOutputFormat)
+            val audioTrackIndex = if (encodedAudioResult != null && encodedAudioResult.second.isNotEmpty()) {
+                muxer.addTrack(encodedAudioResult.first)
+            } else {
+                -1
+            }
+
+            muxer.start()
+
+            val combinedPackets = ArrayList<EncodedMediaPacket>(
+                videoPackets.size + (encodedAudioResult?.second?.size ?: 0)
+            )
+            combinedPackets.addAll(videoPackets)
+            if (audioTrackIndex >= 0 && encodedAudioResult != null) {
+                combinedPackets.addAll(encodedAudioResult.second)
+            }
+            combinedPackets.sortBy { it.presentationTimeUs }
+
+            val info = MediaCodec.BufferInfo()
+            for (pkt in combinedPackets) {
+                val trackIdx = if (pkt.isAudio) audioTrackIndex else videoTrackIndex
+                if (trackIdx >= 0 && pkt.bytes.isNotEmpty()) {
+                    val buf = ByteBuffer.wrap(pkt.bytes)
+                    info.set(0, pkt.bytes.size, pkt.presentationTimeUs.coerceAtLeast(0L), pkt.flags)
+                    muxer.writeSampleData(trackIdx, buf, info)
+                }
+            }
+
+            muxer.stop()
+            outputFile
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed muxing H.264 + AAC MP4", e)
+            outputFile.delete()
+            throw e
+        } finally {
+            try {
+                muxer?.release()
+            } catch (_: Exception) {
+            }
+        }
+    }
+
+    private fun encodeFramesToH264(
+        width: Int,
+        height: Int,
+        fps: Int,
+        totalFrames: Int,
+        scenes: List<ClipSceneSlide>,
+        pcmSamples: ShortArray,
+        visualStyle: String,
+        backgroundKeyframe: Bitmap?,
+        hashtagsLine: String
+    ): Pair<MediaFormat, List<EncodedMediaPacket>> {
         val videoFormat = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, width, height).apply {
-            setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
-            setInteger(MediaFormat.KEY_BIT_RATE, 3_800_000)
+            setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Flexible)
+            setInteger(MediaFormat.KEY_BIT_RATE, 3_200_000)
             setInteger(MediaFormat.KEY_FRAME_RATE, fps)
             setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)
         }
 
         val encoder = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
-        var muxer: MediaMuxer? = null
-        var muxerStarted = false
-        var videoTrackIndex = -1
-        var audioTrackIndex = -1
+        val packets = ArrayList<EncodedMediaPacket>(totalFrames + 8)
+        var outputFormat: MediaFormat? = null
+        val frameBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val frameCanvas = Canvas(frameBitmap)
+        val argbPixels = IntArray(width * height)
 
         try {
             encoder.configure(videoFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
-            val inputSurface = encoder.createInputSurface()
             encoder.start()
 
-            muxer = MediaMuxer(outputFile.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
             val bufferInfo = MediaCodec.BufferInfo()
+            var frameIdx = 0
+            var inputDone = false
+            var outputDone = false
 
-            fun drainVideoEncoder(endOfStream: Boolean) {
-                if (endOfStream) {
-                    encoder.signalEndOfInputStream()
+            while (!outputDone) {
+                if (!inputDone) {
+                    val inIdx = encoder.dequeueInputBuffer(15_000L)
+                    if (inIdx >= 0) {
+                        if (frameIdx >= totalFrames) {
+                            val eosPtsUs = (frameIdx.toLong() * 1_000_000L) / fps.toLong()
+                            encoder.queueInputBuffer(inIdx, 0, 0, eosPtsUs, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
+                            inputDone = true
+                        } else {
+                            val globalProgress = frameIdx.toFloat() / totalFrames.toFloat()
+                            val exactPos = globalProgress * scenes.size
+                            val sceneIdx = exactPos.toInt().coerceIn(0, scenes.lastIndex)
+                            val localProgress = (exactPos - sceneIdx).coerceIn(0f, 1f)
+                            val scene = scenes[sceneIdx]
+
+                            val sampleStart = ((globalProgress * pcmSamples.size).toInt())
+                                .coerceIn(0, (pcmSamples.size - 1).coerceAtLeast(0))
+                            val sampleWindow = min(1024, pcmSamples.size - sampleStart)
+                            var energySum = 0L
+                            for (k in 0 until sampleWindow) {
+                                energySum += abs(pcmSamples[sampleStart + k].toInt())
+                            }
+                            val audioLevel = if (sampleWindow > 0) {
+                                ((energySum.toFloat() / sampleWindow.toFloat()) / 9000f).coerceIn(0.08f, 1f)
+                            } else {
+                                0.25f
+                            }
+
+                            drawShortSceneFrame(
+                                canvas = frameCanvas,
+                                width = width,
+                                height = height,
+                                scene = scene,
+                                sceneIndex = sceneIdx,
+                                sceneCount = scenes.size,
+                                globalProgress = globalProgress,
+                                localSceneProgress = localProgress,
+                                audioLevel = audioLevel,
+                                visualStyle = visualStyle,
+                                backgroundBitmap = backgroundKeyframe,
+                                hashtagsLine = hashtagsLine
+                            )
+                            frameBitmap.getPixels(argbPixels, 0, width, 0, 0, width, height)
+
+                            val ptsUs = (frameIdx.toLong() * 1_000_000L) / fps.toLong()
+                            val inputImage = try {
+                                encoder.getInputImage(inIdx)
+                            } catch (_: Exception) {
+                                null
+                            }
+
+                            if (inputImage != null) {
+                                fillYuv420ImageFromArgb(inputImage, argbPixels, width, height)
+                                inputImage.close()
+                                val byteSize = (width * height * 3) / 2
+                                encoder.queueInputBuffer(inIdx, 0, byteSize, ptsUs, 0)
+                            } else {
+                                val inBuf = encoder.getInputBuffer(inIdx)!!
+                                inBuf.clear()
+                                val written = writeI420ToBuffer(inBuf, argbPixels, width, height)
+                                encoder.queueInputBuffer(inIdx, 0, written, ptsUs, 0)
+                            }
+                            frameIdx++
+                        }
+                    }
                 }
-                while (true) {
-                    val status = encoder.dequeueOutputBuffer(bufferInfo, 10_000L)
-                    when {
-                        status == MediaCodec.INFO_TRY_AGAIN_LATER -> {
-                            if (!endOfStream) break
+
+                val outIdx = encoder.dequeueOutputBuffer(bufferInfo, 15_000L)
+                when {
+                    outIdx == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
+                        outputFormat = encoder.outputFormat
+                    }
+                    outIdx >= 0 -> {
+                        val outBuf = encoder.getOutputBuffer(outIdx)
+                        if (outBuf != null && bufferInfo.size > 0 &&
+                            (bufferInfo.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG) == 0
+                        ) {
+                            outBuf.position(bufferInfo.offset)
+                            outBuf.limit(bufferInfo.offset + bufferInfo.size)
+                            val bytes = ByteArray(bufferInfo.size)
+                            outBuf.get(bytes)
+                            packets.add(
+                                EncodedMediaPacket(
+                                    isAudio = false,
+                                    bytes = bytes,
+                                    presentationTimeUs = bufferInfo.presentationTimeUs,
+                                    flags = bufferInfo.flags
+                                )
+                            )
                         }
-                        status == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
-                            videoTrackIndex = muxer.addTrack(encoder.outputFormat)
-                            if (encodedAudioResult != null) {
-                                audioTrackIndex = muxer.addTrack(encodedAudioResult.first)
-                            }
-                            muxer.start()
-                            muxerStarted = true
-                        }
-                        status >= 0 -> {
-                            val encodedData = encoder.getOutputBuffer(status)
-                            if (encodedData != null && bufferInfo.size > 0 && muxerStarted &&
-                                (bufferInfo.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG) == 0
-                            ) {
-                                encodedData.position(bufferInfo.offset)
-                                encodedData.limit(bufferInfo.offset + bufferInfo.size)
-                                muxer.writeSampleData(videoTrackIndex, encodedData, bufferInfo)
-                            }
-                            encoder.releaseOutputBuffer(status, false)
-                            if ((bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
-                                break
-                            }
+                        encoder.releaseOutputBuffer(outIdx, false)
+                        if ((bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
+                            outputDone = true
                         }
                     }
                 }
             }
 
-            for (frameIdx in 0 until totalFrames) {
-                val globalProgress = frameIdx.toFloat() / totalFrames.toFloat()
-                val exactPos = globalProgress * effectiveScenes.size
-                val sceneIdx = exactPos.toInt().coerceIn(0, effectiveScenes.lastIndex)
-                val localProgress = (exactPos - sceneIdx).coerceIn(0f, 1f)
-                val scene = effectiveScenes[sceneIdx]
-
-                // Compute real-time audio energy at this video frame for live waveform bars
-                val sampleStart = ((globalProgress * pcmSamples.size).toInt()).coerceIn(0, (pcmSamples.size - 1).coerceAtLeast(0))
-                val sampleWindow = min(1024, pcmSamples.size - sampleStart)
-                var energySum = 0L
-                for (k in 0 until sampleWindow) {
-                    energySum += abs(pcmSamples[sampleStart + k].toInt())
-                }
-                val audioLevel = if (sampleWindow > 0) {
-                    ((energySum.toFloat() / sampleWindow.toFloat()) / 9000f).coerceIn(0.08f, 1f)
-                } else {
-                    0.25f
-                }
-
-                val canvas = inputSurface.lockCanvas(null)
-                try {
-                    drawShortSceneFrame(
-                        canvas = canvas,
-                        width = width,
-                        height = height,
-                        scene = scene,
-                        sceneIndex = sceneIdx,
-                        sceneCount = effectiveScenes.size,
-                        globalProgress = globalProgress,
-                        localSceneProgress = localProgress,
-                        audioLevel = audioLevel,
-                        visualStyle = visualStyle,
-                        backgroundBitmap = backgroundKeyframe,
-                        hashtagsLine = hashtagsLine
-                    )
-                } finally {
-                    inputSurface.unlockCanvasAndPost(canvas)
-                }
-
-                drainVideoEncoder(endOfStream = false)
-            }
-
-            drainVideoEncoder(endOfStream = true)
-
-            // Write synchronized AAC audio packets into MP4 container
-            if (muxerStarted && audioTrackIndex >= 0 && encodedAudioResult != null) {
-                val aacInfo = MediaCodec.BufferInfo()
-                for (pkt in encodedAudioResult.second) {
-                    val byteBuf = ByteBuffer.wrap(pkt.bytes)
-                    aacInfo.set(0, pkt.bytes.size, pkt.presentationTimeUs, pkt.flags)
-                    muxer.writeSampleData(audioTrackIndex, byteBuf, aacInfo)
-                }
-            }
-
-            if (muxerStarted) {
-                muxer.stop()
-            }
-            inputSurface.release()
-            outputFile
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to render dynamic short MP4", e)
-            outputFile.delete()
-            throw e
+            val finalFmt = outputFormat ?: throw IllegalStateException("H.264 encoder did not produce output format.")
+            return finalFmt to packets
         } finally {
+            frameBitmap.recycle()
             try {
                 encoder.stop()
             } catch (_: Exception) {
@@ -396,11 +472,94 @@ object VideoClipEngine {
                 encoder.release()
             } catch (_: Exception) {
             }
-            try {
-                muxer?.release()
-            } catch (_: Exception) {
+        }
+    }
+
+    private fun fillYuv420ImageFromArgb(image: Image, argb: IntArray, width: Int, height: Int) {
+        val planes = image.planes
+        val yPlane = planes[0]
+        val uPlane = planes[1]
+        val vPlane = planes[2]
+
+        val yBuf = yPlane.buffer
+        val uBuf = uPlane.buffer
+        val vBuf = vPlane.buffer
+
+        val yRowStride = yPlane.rowStride
+        val yPixelStride = yPlane.pixelStride
+        val uRowStride = uPlane.rowStride
+        val uPixelStride = uPlane.pixelStride
+        val vRowStride = vPlane.rowStride
+        val vPixelStride = vPlane.pixelStride
+
+        val yCap = yBuf.capacity()
+        val uCap = uBuf.capacity()
+        val vCap = vBuf.capacity()
+
+        for (y in 0 until height) {
+            val argbRowOffset = y * width
+            val yRowOffset = y * yRowStride
+            val uvRow = y shr 1
+            val uRowOffset = uvRow * uRowStride
+            val vRowOffset = uvRow * vRowStride
+            val isEvenRow = (y and 1) == 0
+
+            for (x in 0 until width) {
+                val c = argb[argbRowOffset + x]
+                val r = (c shr 16) and 0xFF
+                val g = (c shr 8) and 0xFF
+                val b = c and 0xFF
+
+                val yVal = (((66 * r + 129 * g + 25 * b + 128) shr 8) + 16).coerceIn(0, 255)
+                val yPos = yRowOffset + x * yPixelStride
+                if (yPos < yCap) {
+                    yBuf.put(yPos, yVal.toByte())
+                }
+
+                if (isEvenRow && (x and 1) == 0) {
+                    val uvCol = x shr 1
+                    val uVal = (((-38 * r - 74 * g + 112 * b + 128) shr 8) + 128).coerceIn(0, 255)
+                    val vVal = (((112 * r - 94 * g - 18 * b + 128) shr 8) + 128).coerceIn(0, 255)
+                    val uPos = uRowOffset + uvCol * uPixelStride
+                    val vPos = vRowOffset + uvCol * vPixelStride
+                    if (uPos < uCap) uBuf.put(uPos, uVal.toByte())
+                    if (vPos < vCap) vBuf.put(vPos, vVal.toByte())
+                }
             }
         }
+    }
+
+    private fun writeI420ToBuffer(buf: ByteBuffer, argb: IntArray, width: Int, height: Int): Int {
+        val frameSize = width * height
+        val totalBytes = (frameSize * 3) / 2
+        val yuv = ByteArray(totalBytes)
+        var yIndex = 0
+        var uIndex = frameSize
+        var vIndex = frameSize + (frameSize / 4)
+
+        for (j in 0 until height) {
+            val rowOffset = j * width
+            val isEvenRow = (j and 1) == 0
+            for (i in 0 until width) {
+                val c = argb[rowOffset + i]
+                val r = (c shr 16) and 0xFF
+                val g = (c shr 8) and 0xFF
+                val b = c and 0xFF
+
+                val yVal = (((66 * r + 129 * g + 25 * b + 128) shr 8) + 16).coerceIn(0, 255)
+                yuv[yIndex++] = yVal.toByte()
+
+                if (isEvenRow && (i and 1) == 0) {
+                    val uVal = (((-38 * r - 74 * g + 112 * b + 128) shr 8) + 128).coerceIn(0, 255)
+                    val vVal = (((112 * r - 94 * g - 18 * b + 128) shr 8) + 128).coerceIn(0, 255)
+                    yuv[uIndex++] = uVal.toByte()
+                    yuv[vIndex++] = vVal.toByte()
+                }
+            }
+        }
+        val toWrite = min(totalBytes, buf.remaining())
+        buf.put(yuv, 0, toWrite)
+        return toWrite
     }
 
     /**
@@ -455,21 +614,18 @@ object VideoClipEngine {
         val totalSamples = durationSec * sampleRate
         val output = ShortArray(totalSamples)
 
-        // 1. Optional spoken voiceover via Android TextToSpeech
         val ttsPcm: ShortArray? = if (enableVoiceover && narrationText.isNotBlank()) {
             synthesizeTtsAt44k(context, narrationText.take(480))
         } else {
             null
         }
 
-        // 2. Mix TTS voiceover + subtle futuristic ambient bass/chord pulse
         val twoPi = 2.0 * Math.PI
         for (i in 0 until totalSamples) {
             val t = i.toDouble() / sampleRate.toDouble()
             val beatEnv = 0.55 + 0.45 * sin(twoPi * 2.0 * t)
             val bass = sin(twoPi * 65.41 * t) * 0.5 + sin(twoPi * 130.81 * t) * 0.3 + sin(twoPi * 196.0 * t) * 0.2
             val bedAmplitude = if (ttsPcm != null && i < ttsPcm.size) 950.0 else 2200.0
-            // Smooth fade-in and fade-out
             val fade = when {
                 t < 0.25 -> t / 0.25
                 t > durationSec - 0.4 -> ((durationSec - t) / 0.4).coerceIn(0.0, 1.0)
@@ -574,14 +730,14 @@ object VideoClipEngine {
         }
     }
 
-    private fun encodePcmToAac(pcm: ShortArray, sampleRate: Int): Pair<MediaFormat, List<EncodedAudioPacket>> {
+    private fun encodePcmToAac(pcm: ShortArray, sampleRate: Int): Pair<MediaFormat, List<EncodedMediaPacket>> {
         val format = MediaFormat.createAudioFormat(MediaFormat.MIMETYPE_AUDIO_AAC, sampleRate, 1).apply {
             setInteger(MediaFormat.KEY_AAC_PROFILE, MediaCodecInfo.CodecProfileLevel.AACObjectLC)
             setInteger(MediaFormat.KEY_BIT_RATE, 128_000)
             setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, 16_384)
         }
         val codec = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_AUDIO_AAC)
-        val packets = ArrayList<EncodedAudioPacket>()
+        val packets = ArrayList<EncodedMediaPacket>()
         var outputFormat: MediaFormat? = null
 
         try {
@@ -630,7 +786,7 @@ object VideoClipEngine {
                             outBuf.limit(info.offset + info.size)
                             val bytes = ByteArray(info.size)
                             outBuf.get(bytes)
-                            packets.add(EncodedAudioPacket(bytes, info.presentationTimeUs, info.flags))
+                            packets.add(EncodedMediaPacket(true, bytes, info.presentationTimeUs, info.flags))
                         }
                         codec.releaseOutputBuffer(outIdx, false)
                         if ((info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
@@ -673,7 +829,6 @@ object VideoClipEngine {
             Color.parseColor("#00E5FF")
         }
 
-        // 1. Background: Ken Burns animated camera over AI/YouTube keyframe OR dynamic style gradient
         if (backgroundBitmap != null && !backgroundBitmap.isRecycled) {
             val zoom = 1.05f + 0.14f * localSceneProgress
             val baseScale = maxOf(
@@ -691,7 +846,6 @@ object VideoClipEngine {
             }
             canvas.drawBitmap(backgroundBitmap, matrix, Paint(Paint.FILTER_BITMAP_FLAG))
 
-            // Cinematic dark readability scrim over keyframe
             val scrim = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 shader = LinearGradient(
                     0f, 0f, 0f, height.toFloat(),
@@ -720,7 +874,6 @@ object VideoClipEngine {
             }
             canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), bgPaint)
 
-            // Animated cyber grid & floating bokeh orbs
             val orbPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = accentColor
                 alpha = 46
@@ -742,13 +895,13 @@ object VideoClipEngine {
             }
         }
 
-        // 2. Top progress bar
+        // Top progress bar
         val barTrack = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#2E3B59") }
         val barFill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = accentColor }
         canvas.drawRoundRect(RectF(48f, 62f, width - 48f, 74f), 6f, 6f, barTrack)
         canvas.drawRoundRect(RectF(48f, 62f, 48f + (width - 96f) * globalProgress, 74f), 6f, 6f, barFill)
 
-        // 3. Scene badge pill
+        // Scene badge pill
         val badgePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = accentColor
             alpha = 48
@@ -768,11 +921,11 @@ object VideoClipEngine {
             badgeTextPaint
         )
 
-        // 4. Main kinetic headline with pop-in entrance
+        // Kinetic headline
         val popScale = (0.92f + 0.08f * min(1f, localSceneProgress * 4.5f))
         val headlinePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.WHITE
-            textSize = 60f
+            textSize = 58f
             typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
             setShadowLayer(12f, 0f, 4f, Color.argb(170, 0, 0, 0))
         }
@@ -788,7 +941,7 @@ object VideoClipEngine {
         headlineLayout.draw(canvas)
         canvas.restore()
 
-        // 5. Dynamic Word-by-Word Highlighted Caption Card
+        // Dynamic word-by-word caption card
         val spokenLine = scene.narration.ifBlank { scene.subtitle }
         val words = spokenLine.split(Regex("\\s+")).filter { it.isNotBlank() }
         val activeWordIdx = if (words.isNotEmpty()) {
@@ -815,7 +968,7 @@ object VideoClipEngine {
         }
         val subtitlePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.parseColor("#EAF2FF")
-            textSize = 33f
+            textSize = 32f
             typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
         }
         val subLayout = StaticLayout.Builder
@@ -832,7 +985,7 @@ object VideoClipEngine {
         subLayout.draw(canvas)
         canvas.restore()
 
-        // 6. Live Audio-Reactive Equalizer Bars
+        // Audio-reactive equalizer bars
         val eqBarPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = accentColor
             alpha = 210
@@ -851,7 +1004,7 @@ object VideoClipEngine {
             )
         }
 
-        // 7. Footer FYP hashtags & creator watermark
+        // Footer FYP hashtags & creator watermark
         val tagPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
             color = accentColor
             textSize = 24f

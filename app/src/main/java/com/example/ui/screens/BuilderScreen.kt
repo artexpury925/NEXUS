@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
@@ -32,15 +33,20 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AccountTree
+import androidx.compose.material.icons.filled.AdminPanelSettings
 import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.material.icons.filled.Storefront
 import androidx.compose.material.icons.filled.Web
+import androidx.core.content.FileProvider
+import java.io.File
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -263,6 +269,20 @@ private fun WebAndGameBuilderPane(
                             leadingIcon = { Icon(Icons.Default.SportsEsports, contentDescription = null, modifier = Modifier.size(18.dp)) },
                             modifier = Modifier.height(48.dp).testTag("category_game_chip")
                         )
+                        FilterChip(
+                            selected = buildCategory == "bot",
+                            onClick = { buildCategory = "bot" },
+                            label = { Text("Bot / Extension") },
+                            leadingIcon = { Icon(Icons.Default.SmartToy, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                            modifier = Modifier.height(48.dp).testTag("category_bot_chip")
+                        )
+                        FilterChip(
+                            selected = buildCategory == "panel",
+                            onClick = { buildCategory = "panel" },
+                            label = { Text("Control Panel") },
+                            leadingIcon = { Icon(Icons.Default.AdminPanelSettings, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                            modifier = Modifier.height(48.dp).testTag("category_panel_chip")
+                        )
                     }
 
                     Spacer(modifier = Modifier.height(12.dp))
@@ -276,6 +296,8 @@ private fun WebAndGameBuilderPane(
                                     "clone" -> "Paste any website/app link (e.g., https://linear.app or https://linktr.ee) to clone…"
                                     "dropship" -> "Enter winning product or niche (e.g., Posture Corrector Smart Wearable or LED Desk Lamp)…"
                                     "game" -> "Describe your game (e.g., Neon Cyber Brick Breaker with powerups & high score)…"
+                                    "bot" -> "Describe Discord/Telegram Bot or Chrome Extension (e.g., YouTube Upload Alert Discord Bot + Simulator)…"
+                                    "panel" -> "Describe Creator Control Panel (e.g., Arnold Chirchir Executive Subscriber & SaaS Command Center)…"
                                     else -> "Describe your web app (e.g., Creator Sponsorship Rate Calculator & CRM)…"
                                 }
                             )
@@ -327,6 +349,15 @@ private fun WebAndGameBuilderPane(
                                 "Cyber 2048 puzzle game with combo multiplier",
                                 "Tap Reflex Speed Arena with 30s timer & ranks"
                             )
+                            "bot" -> listOf(
+                                "Discord & Telegram YouTube Drop Alert Bot + Slash Command Simulator",
+                                "YouTube Title & Hashtag Grader Chrome Extension + manifest.json",
+                                "AI Customer Support & Lead Capture Telegram Bot"
+                            )
+                            "panel" -> listOf(
+                                "Arnold Chirchir (@arnold60011) Creator Empire Analytics & Revenue Control Panel",
+                                "Multi-Channel YouTube Shorts Scheduling & KPI Command Center"
+                            )
                             else -> listOf(
                                 "YouTube Revenue & RPM Estimator dashboard with sliders",
                                 "Pomodoro Deep Focus Studio with task checklist & stats",
@@ -367,6 +398,8 @@ private fun WebAndGameBuilderPane(
                                 "clone" -> stringResource(R.string.build_clone_cta)
                                 "dropship" -> stringResource(R.string.build_dropship_cta)
                                 "game" -> stringResource(R.string.build_game_cta)
+                                "bot" -> stringResource(R.string.build_bot_cta)
+                                "panel" -> "Build Creator Control Panel"
                                 else -> stringResource(R.string.build_webapp_cta)
                             }
                         )
@@ -508,6 +541,24 @@ private fun WebAndGameBuilderPane(
 
                     if (isRebrandingThis) {
                         Spacer(modifier = Modifier.height(10.dp))
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            listOf(
+                                "Switch to Luxury Obsidian + Gold theme & add VIP badge",
+                                "Add 3-tier Pricing Table + Interactive Checkout Modal",
+                                "Rebrand header with custom @arnold60011 Creator Pro logo"
+                            ).forEach { quickCmd ->
+                                AssistChip(
+                                    onClick = { rebrandCommandInput = quickCmd },
+                                    label = { Text(quickCmd.take(30) + "…", style = MaterialTheme.typography.labelSmall) }
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(6.dp))
                         OutlinedTextField(
                             value = rebrandCommandInput,
                             onValueChange = { rebrandCommandInput = it },
@@ -703,34 +754,68 @@ private fun CreationSourceViewer(
                 .padding(16.dp)
         ) {
             Column {
-                OutlinedButton(
-                    onClick = {
-                        val slug = creation.title.lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-').ifBlank { "nexus-web-app" }
-                        val renderYaml = """
-                            services:
-                              - type: web
-                                name: $slug
-                                runtime: static
-                                buildCommand: echo "Static HTML5 bundle ready"
-                                staticPublishPath: .
-                                routes:
-                                  - type: rewrite
-                                    source: /*
-                                    destination: /index.html
-                        """.trimIndent()
-                        val cb = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-                        cb?.setPrimaryClip(ClipData.newPlainText("render.yaml", renderYaml))
-                        copied = true
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp)
-                        .padding(bottom = 12.dp)
-                        .testTag("copy_render_yaml_button")
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)
                 ) {
-                    Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Copy render.yaml for Render.com Deployment")
+                    OutlinedButton(
+                        onClick = {
+                            val slug = creation.title.lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-').ifBlank { "nexus-web-app" }
+                            val renderYaml = """
+                                services:
+                                  - type: web
+                                    name: $slug
+                                    runtime: static
+                                    buildCommand: echo "Static HTML5 bundle ready"
+                                    staticPublishPath: .
+                                    routes:
+                                      - type: rewrite
+                                        source: /*
+                                        destination: /index.html
+                            """.trimIndent()
+                            val cb = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                            cb?.setPrimaryClip(ClipData.newPlainText("render.yaml", renderYaml))
+                            copied = true
+                        },
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp)
+                            .testTag("copy_render_yaml_button")
+                    ) {
+                        Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("render.yaml", maxLines = 1)
+                    }
+                    OutlinedButton(
+                        onClick = {
+                            try {
+                                val slug = creation.title.lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-').ifBlank { "index" }
+                                val htmlFile = File(context.cacheDir, "$slug.html")
+                                htmlFile.writeText(creation.htmlCode)
+                                val uri = FileProvider.getUriForFile(
+                                    context,
+                                    "${context.packageName}.fileprovider",
+                                    htmlFile
+                                )
+                                val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                    type = "text/html"
+                                    putExtra(Intent.EXTRA_STREAM, uri)
+                                    putExtra(Intent.EXTRA_SUBJECT, "${creation.title} (Built with Nexus)")
+                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                }
+                                context.startActivity(Intent.createChooser(shareIntent, "Export index.html"))
+                            } catch (_: Exception) {
+                            }
+                        },
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp)
+                            .testTag("export_html_file_button")
+                    ) {
+                        Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Export .html", maxLines = 1)
+                    }
                 }
                 Text(
                     text = creation.htmlCode,

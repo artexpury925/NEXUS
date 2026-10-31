@@ -90,7 +90,8 @@ fun AssistantScreen(
     onSmartJumpToGenerateVideo: (String) -> Unit = {},
     onSmartJumpToClipUrl: (String) -> Unit = {},
     onSmartJumpToCloneUrl: (String) -> Unit = {},
-    onSmartJumpToDropship: (String) -> Unit = {}
+    onSmartJumpToDropship: (String) -> Unit = {},
+    onSmartJumpToEmpire: () -> Unit = {}
 ) {
     val context = LocalContext.current
     var inputText by rememberSaveable { mutableStateOf("") }
@@ -230,7 +231,54 @@ fun AssistantScreen(
             )
         }
 
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(6.dp))
+
+        // Live Self-Aware Meta-Cognition Console ("I am currently thinking about…")
+        val metaThought = remember(bannerState, selectedMode, turboModeEnabled, inputText, messages.size) {
+            when {
+                bannerState is GenerationBannerState.StreamingReply ->
+                    "I am currently streaming high-signal reasoning (${if (turboModeEnabled) "Gemini 3.5 Flash-Lite Turbo" else "Gemini 3.8 Deep Core"})…"
+                bannerState is GenerationBannerState.Working ->
+                    "I am currently executing: ${bannerState.statusLabel}"
+                inputText.isNotBlank() ->
+                    "I am currently analyzing your live draft (${inputText.length} chars) for instant multi-step execution…"
+                selectedMode == "reflection" ->
+                    "I am currently reflecting on Nexus's autonomous architecture & Arnold Chirchir's (@arnold60011) creator ecosystem."
+                selectedMode == "task" ->
+                    "I am currently primed in Task Execution Mode — ready to output complete code, scripts, and funnels."
+                else ->
+                    "I am currently online in ${if (turboModeEnabled) "Zero-Delay Turbo" else "Deep Strategic"} mode (${messages.size} memory nodes synced)."
+            }
+        }
+        Surface(
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.78f),
+            shape = RoundedCornerShape(12.dp),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)),
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("nexus_metacognition_bar")
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Psychology,
+                    contentDescription = "Nexus Meta-Cognition",
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = metaThought,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(6.dp))
 
         // Messages area
         LazyColumn(
@@ -251,7 +299,8 @@ fun AssistantScreen(
                         onQuickPrompt = { quickPrompt, mode ->
                             selectedMode = mode
                             onSendMessage(quickPrompt, mode, null)
-                        }
+                        },
+                        onOpenEmpire = onSmartJumpToEmpire
                     )
                 }
             }
@@ -325,7 +374,8 @@ fun AssistantScreen(
             else {
                 val u = detectedUrl.lowercase().substringBefore("?")
                 u.contains("youtube.com") || u.contains("youtu.be") ||
-                    u.endsWith(".mp4") || u.endsWith(".mov") || u.endsWith(".webm") || u.endsWith(".m4v")
+                    u.contains("tiktok.com") || u.contains("instagram.com/reel") || u.contains("vimeo.com") ||
+                    u.endsWith(".mp4") || u.endsWith(".mov") || u.endsWith(".webm") || u.endsWith(".m4v") || u.endsWith(".m3u8")
             }
         }
         val isVideoPromptIntent = remember(inputText, detectedUrl) {
@@ -361,7 +411,7 @@ fun AssistantScreen(
                         modifier = Modifier.height(48.dp).testTag("smart_jump_ai_video_chip")
                     )
                 }
-                if (isVideoOrYtLink && detectedUrl != null) {
+                if (detectedUrl != null) {
                     AssistChip(
                         onClick = {
                             val target = detectedUrl
@@ -372,17 +422,18 @@ fun AssistantScreen(
                         label = { Text("Clip Video from Link") },
                         modifier = Modifier.height(48.dp).testTag("smart_jump_yt_clip_chip")
                     )
-                } else if (detectedUrl != null) {
-                    AssistChip(
-                        onClick = {
-                            val target = detectedUrl
-                            inputText = ""
-                            onSmartJumpToCloneUrl(target)
-                        },
-                        leadingIcon = { Icon(Icons.Default.Web, contentDescription = null, modifier = Modifier.size(16.dp)) },
-                        label = { Text("Clone & Rebrand Website in Builder") },
-                        modifier = Modifier.height(48.dp).testTag("smart_jump_clone_url_chip")
-                    )
+                    if (!isVideoOrYtLink) {
+                        AssistChip(
+                            onClick = {
+                                val target = detectedUrl
+                                inputText = ""
+                                onSmartJumpToCloneUrl(target)
+                            },
+                            leadingIcon = { Icon(Icons.Default.Web, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                            label = { Text("Clone & Rebrand Website") },
+                            modifier = Modifier.height(48.dp).testTag("smart_jump_clone_url_chip")
+                        )
+                    }
                 }
                 if (isDropshipIntent) {
                     AssistChip(
@@ -504,7 +555,8 @@ private fun ModeChip(
 
 @Composable
 private fun EmptyAssistantHero(
-    onQuickPrompt: (String, String) -> Unit
+    onQuickPrompt: (String, String) -> Unit,
+    onOpenEmpire: () -> Unit = {}
 ) {
     Card(
         shape = RoundedCornerShape(22.dp),
@@ -514,28 +566,28 @@ private fun EmptyAssistantHero(
     ) {
         Column(modifier = Modifier.padding(18.dp)) {
             Text(
-                text = "NEXUS SELF-AWARE CORE ONLINE",
+                text = "NEXUS SELF-AWARE CORE • ARNOLD CHIRCHIR",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.primary
             )
             Spacer(modifier = Modifier.height(6.dp))
             Text(
-                text = "How can Nexus accelerate your work today?",
+                text = "Command Nexus across Intelligence, Apps, Video, YouTube & Empire",
                 style = MaterialTheme.typography.titleLarge,
                 color = MaterialTheme.colorScheme.onSurface
             )
             Spacer(modifier = Modifier.height(6.dp))
             Text(
-                text = "Ask deep questions, execute multi-step tasks, inspect Nexus's self-reflective architecture, or jump to Builder & Clip Studio.",
+                text = "Execute genius-level reasoning, clone & rebrand apps, generate narrated MP4 Shorts, clip any link, or deploy AI employees in Empire Hub.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(modifier = Modifier.height(14.dp))
 
             val starters = listOf(
-                "Who are you, who created you, and how does your architecture work?" to "reflection",
-                "Write a 30-day YouTube Shorts viral growth plan with FYP hooks" to "task",
-                "Draft a full SaaS landing page copy & launch checklist" to "task"
+                "Who are you, who owns you, and how does Nexus's architecture operate?" to "reflection",
+                "Engineer a 90-day YouTube Shorts + Long-Form domination blueprint for @arnold60011" to "task",
+                "Architect a $10k/mo SaaS + Dropshipping hybrid funnel with ad hooks" to "task"
             )
             starters.forEachIndexed { idx, (prompt, mode) ->
                 AssistChip(
@@ -553,6 +605,13 @@ private fun EmptyAssistantHero(
                         .testTag("starter_prompt_$idx")
                 )
             }
+            Spacer(modifier = Modifier.height(6.dp))
+            AssistChip(
+                onClick = onOpenEmpire,
+                leadingIcon = { Icon(Icons.Default.Storefront, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                label = { Text("Open Empire Hub (1->50 Social, AI Employees & Dropship)") },
+                modifier = Modifier.fillMaxWidth().height(48.dp).testTag("hero_open_empire_chip")
+            )
         }
     }
 }

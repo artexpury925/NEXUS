@@ -6,8 +6,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import android.widget.MediaController
-import android.widget.VideoView
+import android.view.TextureView
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
@@ -25,6 +24,8 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -38,8 +39,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.automirrored.filled.TrendingUp
+import androidx.compose.material.icons.automirrored.filled.VolumeOff
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.filled.CheckCircle
@@ -51,9 +53,10 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.MovieCreation
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.Share
-import androidx.compose.material.icons.filled.Tag
 import androidx.compose.material.icons.filled.VideoFile
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
@@ -73,6 +76,7 @@ import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -84,6 +88,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -93,15 +98,24 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
 import com.example.R
 import com.example.data.model.VideoClipProject
 import com.example.media.RenderHealthStatus
 import com.example.media.VideoClipEngine
 import com.example.media.VideoSourceMetadata
 import com.example.util.openExternalUrl
+import com.example.viewmodel.CompetitorAuditResult
+import com.example.viewmodel.ContentCalendarResult
 import com.example.viewmodel.CreatorGrowthResult
+import com.example.viewmodel.FullUploadPackageResult
 import com.example.viewmodel.GenerationBannerState
+import com.example.viewmodel.ImageGenState
+import com.example.viewmodel.RetentionOptimizerResult
 import com.example.viewmodel.StreamState
+import com.example.viewmodel.TitleThumbLabResult
 import com.example.viewmodel.YouTubeLinkClipCandidate
 import com.example.youtube.ConnectedYouTubeChannel
 import com.example.youtube.YouTubeStudioManager
@@ -154,12 +168,29 @@ fun ClipStudioScreen(
     ) -> Unit,
     onRenderLinkCandidate: (Context, YouTubeLinkClipCandidate, Boolean, String) -> Unit,
     onCutCandidateViaRender: (Context, YouTubeLinkClipCandidate, Boolean, String) -> Unit = { _, _, _, _ -> },
+    onBatchRenderTopCandidates: (Context, Boolean, String) -> Unit = { _, _, _ -> },
+    latestReadyClip: VideoClipProject? = null,
+    onClearLatestReadyClip: () -> Unit = {},
+    titleThumbResult: TitleThumbLabResult? = null,
+    thumbnailGenState: ImageGenState = ImageGenState.Idle,
+    retentionResult: RetentionOptimizerResult? = null,
+    uploadPackageResult: FullUploadPackageResult? = null,
+    calendarResult: ContentCalendarResult? = null,
+    competitorResult: CompetitorAuditResult? = null,
+    customHooksResult: List<String> = emptyList(),
+    onRunTitleThumbLab: (String) -> Unit = {},
+    onGenerateThumbnailImage: (String) -> Unit = {},
+    onRunRetentionOptimizer: (String) -> Unit = {},
+    onRunUploadPackage: (String) -> Unit = {},
+    onRunCalendar: (String, Int) -> Unit = { _, _ -> },
+    onRunCompetitorAudit: (String) -> Unit = {},
+    onGenerateCustomHooks: (String) -> Unit = {},
     onExportClipToGallery: (Context, VideoClipProject) -> Unit,
     onUploadClip: (VideoClipProject, String) -> Unit,
     onMarkSharedViaApp: (String) -> Unit,
     onDeleteClip: (VideoClipProject) -> Unit,
     onGenerateFypKit: (String) -> Unit,
-    onQuickSendToAssistant: (String) -> Unit
+    onQuickSendToAssistant: (String) -> Unit = {}
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -238,8 +269,8 @@ fun ClipStudioScreen(
             Tab(
                 selected = selectedTab == 1,
                 onClick = { selectedTab = 1 },
-                text = { Text("FYP & Hashtag Lab") },
-                icon = { Icon(Icons.AutoMirrored.Filled.TrendingUp, contentDescription = "FYP and Hashtag Lab") },
+                text = { Text("YT Domination Suite") },
+                icon = { Icon(Icons.AutoMirrored.Filled.TrendingUp, contentDescription = "YouTube Domination Suite") },
                 modifier = Modifier.testTag("fyp_hashtag_tab")
             )
         }
@@ -247,6 +278,8 @@ fun ClipStudioScreen(
         if (selectedTab == 0) {
             ClipAndPublishPane(
                 clips = (clipsState as? StreamState.Success)?.data.orEmpty(),
+                latestReadyClip = latestReadyClip,
+                onClearLatestReadyClip = onClearLatestReadyClip,
                 youtubeLinkCandidates = youtubeLinkCandidates,
                 youtubeChannel = youtubeChannel,
                 isYouTubeConnected = !youtubeAccessToken.isNullOrBlank(),
@@ -292,6 +325,9 @@ fun ClipStudioScreen(
                 onCutCandidateViaRender = { candidate, autoPost, privacy ->
                     onCutCandidateViaRender(context, candidate, autoPost, privacy)
                 },
+                onBatchRenderTopCandidates = { autoPost, privacy ->
+                    onBatchRenderTopCandidates(context, autoPost, privacy)
+                },
                 onExportClipToGallery = { clip ->
                     onExportClipToGallery(context, clip)
                 },
@@ -310,11 +346,24 @@ fun ClipStudioScreen(
                 onDeleteClip = onDeleteClip
             )
         } else {
-            CreatorFypAndHashtagPane(
-                result = creatorGrowthResult,
+            CreatorDominationPane(
+                fypResult = creatorGrowthResult,
+                titleThumbResult = titleThumbResult,
+                thumbnailGenState = thumbnailGenState,
+                retentionResult = retentionResult,
+                uploadPackageResult = uploadPackageResult,
+                calendarResult = calendarResult,
+                competitorResult = competitorResult,
+                customHooksResult = customHooksResult,
                 isBusy = isBusy,
-                onGenerateKit = onGenerateFypKit,
-                onSendCalendarPrompt = onQuickSendToAssistant
+                onGenerateFypKit = onGenerateFypKit,
+                onRunTitleThumbLab = onRunTitleThumbLab,
+                onGenerateThumbnailImage = onGenerateThumbnailImage,
+                onRunRetentionOptimizer = onRunRetentionOptimizer,
+                onRunUploadPackage = onRunUploadPackage,
+                onRunCalendar = onRunCalendar,
+                onRunCompetitorAudit = onRunCompetitorAudit,
+                onGenerateCustomHooks = onGenerateCustomHooks
             )
         }
     }
@@ -324,6 +373,8 @@ fun ClipStudioScreen(
 @Composable
 private fun ClipAndPublishPane(
     clips: List<VideoClipProject>,
+    latestReadyClip: VideoClipProject?,
+    onClearLatestReadyClip: () -> Unit,
     youtubeLinkCandidates: List<YouTubeLinkClipCandidate>,
     youtubeChannel: ConnectedYouTubeChannel?,
     isYouTubeConnected: Boolean,
@@ -343,6 +394,7 @@ private fun ClipAndPublishPane(
     onClipUploadedVideo: (Uri, String, Boolean, Int?, Int?, Boolean, String) -> Unit,
     onRenderLinkCandidate: (YouTubeLinkClipCandidate, Boolean, String) -> Unit,
     onCutCandidateViaRender: (YouTubeLinkClipCandidate, Boolean, String) -> Unit,
+    onBatchRenderTopCandidates: (Boolean, String) -> Unit,
     onExportClipToGallery: (VideoClipProject) -> Unit,
     onPreviewClip: (VideoClipProject) -> Unit,
     onUploadClip: (VideoClipProject, String) -> Unit,
@@ -417,6 +469,55 @@ private fun ClipAndPublishPane(
     ) {
         item(key = "creator_promo_clip_top") {
             PersistentYouTubePromoCard()
+        }
+
+        // High-visibility Latest Ready MP4 Spotlight Card so user immediately sees & plays newly rendered video!
+        val spotlightClip = latestReadyClip ?: clips.firstOrNull()
+        if (spotlightClip != null && File(spotlightClip.localFilePath).exists()) {
+            item(key = "spotlight_ready_clip_${spotlightClip.id}") {
+                Card(
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                    border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(
+                            text = "🎬 LATEST READY HD MP4 VIDEO (${spotlightClip.durationSec}s)",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = spotlightClip.title,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(
+                                onClick = {
+                                    onClearLatestReadyClip()
+                                    onPreviewClip(spotlightClip)
+                                },
+                                modifier = Modifier.weight(1.2f).height(48.dp).testTag("spotlight_play_clip_button")
+                            ) {
+                                Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Play Now")
+                            }
+                            OutlinedButton(
+                                onClick = { onExportClipToGallery(spotlightClip) },
+                                modifier = Modifier.weight(1f).height(48.dp)
+                            ) {
+                                Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Save MP4")
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         // 3-Mode Selector Bar: Prompt -> Video | Clip via Link | Upload Video
@@ -899,8 +1000,36 @@ private fun ClipAndPublishPane(
             )
         }
 
-        // Extracted YouTube Link Candidates (shown whenever populated)
+        // Extracted YouTube / Universal Link Candidates (shown whenever populated)
         if (youtubeLinkCandidates.isNotEmpty()) {
+            item(key = "batch_render_top_3_header") {
+                Card(
+                    shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.tertiary),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(14.dp).fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Extracted ${youtubeLinkCandidates.size} Viral Shorts Blueprints", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                            Text("Auto-render the top 3 clips into narrated vertical MP4s in 1 tap", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Button(
+                            onClick = { onBatchRenderTopCandidates(autoPost, privacyStatus) },
+                            enabled = !isBusy,
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary),
+                            modifier = Modifier.height(48.dp).testTag("batch_render_top_3_button")
+                        ) {
+                            Text("Batch Top 3")
+                        }
+                    }
+                }
+            }
             items(youtubeLinkCandidates, key = { "yt_cand_${it.index}_${it.title}" }) { cand ->
                 Card(
                     shape = RoundedCornerShape(18.dp),
@@ -1235,7 +1364,31 @@ private fun ClipPlayerScreen(
     onUploadApi: () -> Unit,
     onShareToYouTubeApp: () -> Unit
 ) {
-    val fileExists = remember(clip.localFilePath) { File(clip.localFilePath).exists() }
+    val context = LocalContext.current
+    val videoFile = remember(clip.localFilePath) { File(clip.localFilePath) }
+    val fileExists = remember(videoFile) { videoFile.exists() && videoFile.length() > 0L }
+
+    var isPlaying by remember { mutableStateOf(true) }
+    var isMuted by remember { mutableStateOf(false) }
+
+    val exoPlayer = remember(clip.localFilePath) {
+        if (fileExists) {
+            ExoPlayer.Builder(context).build().apply {
+                setMediaItem(MediaItem.fromUri(Uri.fromFile(videoFile)))
+                repeatMode = Player.REPEAT_MODE_ONE
+                prepare()
+                playWhenReady = true
+            }
+        } else {
+            null
+        }
+    }
+
+    DisposableEffect(exoPlayer) {
+        onDispose {
+            exoPlayer?.release()
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -1249,15 +1402,31 @@ private fun ClipPlayerScreen(
                     .padding(horizontal = 8.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = onClose, modifier = Modifier.size(48.dp)) {
+                IconButton(onClick = onClose, modifier = Modifier.size(48.dp).testTag("close_clip_player_button")) {
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                 }
-                Text(
-                    text = clip.title,
-                    style = MaterialTheme.typography.titleMedium,
-                    maxLines = 1,
-                    modifier = Modifier.weight(1f)
-                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = clip.title,
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 1
+                    )
+                    Text(
+                        text = "Media3 HD Player • ${clip.durationSec}s MP4",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+                IconButton(
+                    onClick = {
+                        val cb = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                        val meta = "${clip.title}\n\n${clip.description}\n\n${clip.tags.joinToString(" ") { "#$it" }}"
+                        cb?.setPrimaryClip(ClipData.newPlainText("Clip Metadata", meta))
+                    },
+                    modifier = Modifier.size(48.dp)
+                ) {
+                    Icon(Icons.Default.ContentCopy, contentDescription = "Copy Clip Metadata")
+                }
                 IconButton(onClick = onSaveGallery, modifier = Modifier.size(48.dp)) {
                     Icon(Icons.Default.Download, contentDescription = "Save MP4 to Gallery")
                 }
@@ -1267,38 +1436,100 @@ private fun ClipPlayerScreen(
         Box(
             modifier = Modifier
                 .weight(1f)
-                .fillMaxWidth(),
+                .fillMaxWidth()
+                .padding(8.dp),
             contentAlignment = Alignment.Center
         ) {
-            if (fileExists) {
-                AndroidView(
-                    factory = { ctx ->
-                        VideoView(ctx).apply {
-                            setVideoPath(clip.localFilePath)
-                            val controller = MediaController(ctx)
-                            controller.setAnchorView(this)
-                            setMediaController(controller)
-                            setOnPreparedListener { mp ->
-                                mp.isLooping = true
-                                start()
+            if (fileExists && exoPlayer != null) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .aspectRatio(9f / 16f, matchHeightConstraintsFirst = true)
+                        .clip(RoundedCornerShape(18.dp))
+                        .background(Color.Black),
+                    contentAlignment = Alignment.Center
+                ) {
+                    AndroidView(
+                        factory = { ctx ->
+                            TextureView(ctx).also { tv ->
+                                exoPlayer.setVideoTextureView(tv)
                             }
-                        }
-                    },
-                    modifier = Modifier.fillMaxSize()
-                )
+                        },
+                        update = { tv ->
+                            exoPlayer.setVideoTextureView(tv)
+                        },
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
             } else {
                 Text(
-                    text = "Local MP4 file is no longer cached on this device.",
+                    text = "Local MP4 file is no longer cached on this device. Generate or clip a new video above.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
 
+        if (exoPlayer != null) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OutlinedButton(
+                    onClick = {
+                        if (exoPlayer.isPlaying) {
+                            exoPlayer.pause()
+                            isPlaying = false
+                        } else {
+                            exoPlayer.play()
+                            isPlaying = true
+                        }
+                    },
+                    modifier = Modifier.height(48.dp).testTag("player_play_pause_button")
+                ) {
+                    Icon(
+                        imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                        contentDescription = if (isPlaying) "Pause" else "Play"
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(if (isPlaying) "Pause" else "Play")
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                OutlinedButton(
+                    onClick = {
+                        exoPlayer.seekTo(0L)
+                        exoPlayer.play()
+                        isPlaying = true
+                    },
+                    modifier = Modifier.height(48.dp)
+                ) {
+                    Icon(Icons.Default.Replay, contentDescription = "Replay")
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Replay")
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                IconButton(
+                    onClick = {
+                        isMuted = !isMuted
+                        exoPlayer.volume = if (isMuted) 0f else 1f
+                    },
+                    modifier = Modifier.size(48.dp)
+                ) {
+                    Icon(
+                        imageVector = if (isMuted) Icons.AutoMirrored.Filled.VolumeOff else Icons.AutoMirrored.Filled.VolumeUp,
+                        contentDescription = if (isMuted) "Unmute" else "Mute"
+                    )
+                }
+            }
+        }
+
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 6.dp)
+                .padding(horizontal = 16.dp, vertical = 4.dp)
         ) {
             PersistentYouTubePromoCard(compact = true)
         }
@@ -1306,7 +1537,7 @@ private fun ClipPlayerScreen(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
+                .padding(horizontal = 16.dp, vertical = 10.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             if (isYouTubeLinked) {
@@ -1330,336 +1561,4 @@ private fun ClipPlayerScreen(
             }
         }
     }
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun CreatorFypAndHashtagPane(
-    result: CreatorGrowthResult?,
-    isBusy: Boolean,
-    onGenerateKit: (String) -> Unit,
-    onSendCalendarPrompt: (String) -> Unit
-) {
-    val context = LocalContext.current
-    var topicInput by rememberSaveable { mutableStateOf("") }
-    var copiedLabel by remember { mutableStateOf<String?>(null) }
-
-    fun copyText(label: String, content: String) {
-        val cb = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-        cb?.setPrimaryClip(ClipData.newPlainText(label, content))
-        copiedLabel = label
-    }
-
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
-    ) {
-        item(key = "fyp_yt_promo") {
-            PersistentYouTubePromoCard(compact = true)
-        }
-
-        item(key = "fyp_generator_input") {
-            Card(
-                shape = RoundedCornerShape(22.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text(
-                        text = "YouTube FYP, Hook & Hyper-Hashtag Engine",
-                        style = MaterialTheme.typography.titleLarge
-                    )
-                    Text(
-                        text = "Enter your video topic or niche to generate 3-tier FYP hashtags, high-CTR titles, thumbnail psychology & retention hooks.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    OutlinedTextField(
-                        value = topicInput,
-                        onValueChange = { topicInput = it },
-                        placeholder = { Text("e.g., AI automation tools for solo creators in 2026") },
-                        minLines = 2,
-                        maxLines = 3,
-                        shape = RoundedCornerShape(16.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("fyp_topic_input")
-                    )
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        listOf(
-                            "Faceless YouTube Shorts AI Empire",
-                            "Tech & Coding Productivity Setup",
-                            "Gaming Highlights & High-Retention Edits"
-                        ).forEach { preset ->
-                            AssistChip(
-                                onClick = { topicInput = preset },
-                                label = { Text(preset, style = MaterialTheme.typography.bodySmall) }
-                            )
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Button(
-                        onClick = { onGenerateKit(topicInput) },
-                        enabled = !isBusy && topicInput.isNotBlank(),
-                        shape = RoundedCornerShape(14.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(52.dp)
-                            .testTag("generate_fyp_kit_button")
-                    ) {
-                        Icon(Icons.Default.AutoFixHigh, contentDescription = null, modifier = Modifier.size(20.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Engineer FYP & Hashtag Pack")
-                    }
-                }
-            }
-        }
-
-        if (copiedLabel != null) {
-            item(key = "copied_toast_card") {
-                Surface(
-                    color = MaterialTheme.colorScheme.primaryContainer,
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(
-                        text = "Copied $copiedLabel to clipboard!",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(12.dp)
-                    )
-                }
-            }
-        }
-
-        if (result != null) {
-            item(key = "fyp_score_card") {
-                Card(
-                    shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary)
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Surface(
-                                color = MaterialTheme.colorScheme.primaryContainer,
-                                shape = RoundedCornerShape(14.dp)
-                            ) {
-                                Text(
-                                    text = "FYP SCORE ${result.fypScore}/100",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
-                                )
-                            }
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Text(
-                                text = result.bestPostingTip,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(14.dp))
-                        Text("Thumbnail Psychology & Visual", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.secondary)
-                        Text(result.thumbnailIdea, style = MaterialTheme.typography.bodyMedium)
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Text("Retention Graph & Loop Strategy", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
-                        Text(result.retentionStrategy, style = MaterialTheme.typography.bodyMedium)
-                    }
-                }
-            }
-
-            item(key = "hashtag_tiers_card") {
-                val allHashtags = (result.fypHashtags + result.nicheHashtags).distinct().joinToString(" ")
-                Card(
-                    shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.Tag, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("3-Tier FYP & SEO Hashtag Matrix", style = MaterialTheme.typography.titleMedium)
-                            }
-                            IconButton(
-                                onClick = { copyText("All FYP Hashtags", allHashtags) },
-                                modifier = Modifier.size(48.dp)
-                            ) {
-                                Icon(Icons.Default.ContentCopy, contentDescription = "Copy all hashtags")
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text("Safe Pack • Broad High-Velocity FYP & Shorts", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.tertiary)
-                        Spacer(modifier = Modifier.height(6.dp))
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            result.fypHashtags.forEach { tag ->
-                                HashtagPill(tag = tag, onClick = { copyText(tag, tag) })
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text("Aggressive Pack • High-Velocity Niche Authority", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-                        Spacer(modifier = Modifier.height(6.dp))
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            result.nicheHashtags.forEach { tag ->
-                                HashtagPill(tag = tag, onClick = { copyText(tag, tag) })
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text("Nuclear Pack • Viral & YouTube Search Dominance", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.secondary)
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = result.searchKeywords.joinToString(", "),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(modifier = Modifier.height(10.dp))
-                        OutlinedButton(
-                            onClick = { copyText("SEO Tags CSV", result.searchKeywords.joinToString(", ")) },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(48.dp)
-                        ) {
-                            Text("Copy Comma-Separated Studio Tags")
-                        }
-                    }
-                }
-            }
-
-            item(key = "hooks_titles_card") {
-                Card(
-                    shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text("First-3-Second Scroll-Stopping Hooks", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                        Spacer(modifier = Modifier.height(8.dp))
-                        result.viralHooks.forEachIndexed { i, hook ->
-                            Surface(
-                                color = MaterialTheme.colorScheme.background,
-                                shape = RoundedCornerShape(12.dp),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 4.dp)
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(12.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = "${i + 1}. $hook",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        modifier = Modifier.weight(1f)
-                                    )
-                                    IconButton(
-                                        onClick = { copyText("Viral Hook", hook) },
-                                        modifier = Modifier.size(48.dp)
-                                    ) {
-                                        Icon(Icons.Default.ContentCopy, contentDescription = "Copy hook", modifier = Modifier.size(18.dp))
-                                    }
-                                }
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(14.dp))
-                        Text("High-CTR YouTube Titles", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                        Spacer(modifier = Modifier.height(8.dp))
-                        result.seoTitles.forEach { title ->
-                            Surface(
-                                color = MaterialTheme.colorScheme.background,
-                                shape = RoundedCornerShape(12.dp),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 4.dp)
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(12.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = title,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        modifier = Modifier.weight(1f)
-                                    )
-                                    IconButton(
-                                        onClick = { copyText("YouTube Title", title) },
-                                        modifier = Modifier.size(48.dp)
-                                    ) {
-                                        Icon(Icons.Default.ContentCopy, contentDescription = "Copy title", modifier = Modifier.size(18.dp))
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        item(key = "creator_empire_shortcuts") {
-            Card(
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Creator Content Empire Accelerators", style = MaterialTheme.typography.titleMedium)
-                    Spacer(modifier = Modifier.height(10.dp))
-                    OutlinedButton(
-                        onClick = {
-                            val target = topicInput.ifBlank { "AI & Tech Creator Channel like @arnold60011" }
-                            onSendCalendarPrompt("Build a 30-day YouTube Shorts & Long-Form Content Calendar with exact posting windows, hooks, and monetization milestones for: $target")
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(48.dp)
-                    ) {
-                        Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Generate 30-Day Viral Content Calendar")
-                    }
-                    Spacer(modifier = Modifier.height(8.dp))
-                    OutlinedButton(
-                        onClick = {
-                            val target = topicInput.ifBlank { "My latest YouTube video" }
-                            onSendCalendarPrompt("Repurpose \"$target\" into 10 multi-platform assets: 3 YouTube Shorts scripts, 3 Instagram Reels captions, 2 X threads, and 2 YouTube Community polls.")
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(48.dp)
-                    ) {
-                        Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("1-to-10 Cross-Platform Repurposer")
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun HashtagPill(tag: String, onClick: () -> Unit) {
-    val formatted = if (tag.startsWith("#")) tag else "#$tag"
-    AssistChip(
-        onClick = onClick,
-        label = { Text(formatted, style = MaterialTheme.typography.labelMedium) }
-    )
 }

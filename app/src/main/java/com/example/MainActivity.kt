@@ -24,10 +24,12 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.PersonPin
+import androidx.compose.material.icons.filled.RocketLaunch
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Build
 import androidx.compose.material.icons.outlined.PersonPin
+import androidx.compose.material.icons.outlined.RocketLaunch
 import androidx.compose.material.icons.outlined.VideoLibrary
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -70,6 +72,7 @@ import com.example.ui.screens.BuilderScreen
 import com.example.ui.screens.ClipStudioScreen
 import com.example.ui.screens.CreatorHubScreen
 import com.example.ui.screens.CreatorOnboardingGateScreen
+import com.example.ui.screens.EmpireHubScreen
 import com.example.ui.screens.PersistentYouTubePromoCard
 import com.example.ui.theme.NexusTheme
 import com.example.util.configureAppCheck
@@ -171,6 +174,17 @@ private fun AuthenticatedNexusWorkspace(
     val useRenderCloudForUploads by viewModel.useRenderCloudForUploads.collectAsStateWithLifecycle()
     val renderBaseUrl by viewModel.renderBaseUrl.collectAsStateWithLifecycle()
     val renderHealthStatus by viewModel.renderHealthStatus.collectAsStateWithLifecycle()
+    val latestReadyClip by viewModel.latestReadyClip.collectAsStateWithLifecycle()
+    val titleThumbResult by viewModel.titleThumbResult.collectAsStateWithLifecycle()
+    val thumbnailGenState by viewModel.thumbnailGenState.collectAsStateWithLifecycle()
+    val retentionResult by viewModel.retentionResult.collectAsStateWithLifecycle()
+    val uploadPackageResult by viewModel.uploadPackageResult.collectAsStateWithLifecycle()
+    val calendarResult by viewModel.calendarResult.collectAsStateWithLifecycle()
+    val competitorResult by viewModel.competitorResult.collectAsStateWithLifecycle()
+    val customHooksResult by viewModel.customHooksResult.collectAsStateWithLifecycle()
+    val repurposeResult by viewModel.repurposeResult.collectAsStateWithLifecycle()
+    val channelAuditResult by viewModel.channelAuditResult.collectAsStateWithLifecycle()
+    val businessEmpireResult by viewModel.businessEmpireResult.collectAsStateWithLifecycle()
 
     LaunchedEffect(context) {
         viewModel.loadRenderPipelineConfig(context)
@@ -197,6 +211,7 @@ private fun AuthenticatedNexusWorkspace(
             NavDestination(R.string.nav_assistant, Icons.Filled.AutoAwesome, Icons.Outlined.AutoAwesome, "nav_assistant"),
             NavDestination(R.string.nav_builder, Icons.Filled.Build, Icons.Outlined.Build, "nav_builder"),
             NavDestination(R.string.nav_clips_studio, Icons.Filled.VideoLibrary, Icons.Outlined.VideoLibrary, "nav_clips"),
+            NavDestination(R.string.nav_empire, Icons.Filled.RocketLaunch, Icons.Outlined.RocketLaunch, "nav_empire"),
             NavDestination(R.string.nav_creator, Icons.Filled.PersonPin, Icons.Outlined.PersonPin, "nav_creator")
         )
     }
@@ -302,6 +317,9 @@ private fun AuthenticatedNexusWorkspace(
                                 onSmartJumpToDropship = { niche ->
                                     selectedTab = 1
                                     viewModel.generateDropshippingEmpire(niche)
+                                },
+                                onSmartJumpToEmpire = {
+                                    selectedTab = 3
                                 }
                             )
 
@@ -384,6 +402,25 @@ private fun AuthenticatedNexusWorkspace(
                                 onCutCandidateViaRender = { ctx, cand, autoPost, vis ->
                                     viewModel.cutCandidateViaRenderFfmpeg(ctx, cand, autoPost, vis)
                                 },
+                                onBatchRenderTopCandidates = { ctx, autoPost, vis ->
+                                    viewModel.batchRenderTopCandidates(ctx, 3, autoPost, vis)
+                                },
+                                latestReadyClip = latestReadyClip,
+                                onClearLatestReadyClip = { viewModel.clearLatestReadyClip() },
+                                titleThumbResult = titleThumbResult,
+                                thumbnailGenState = thumbnailGenState,
+                                retentionResult = retentionResult,
+                                uploadPackageResult = uploadPackageResult,
+                                calendarResult = calendarResult,
+                                competitorResult = competitorResult,
+                                customHooksResult = customHooksResult,
+                                onRunTitleThumbLab = { viewModel.runTitleThumbnailLab(it) },
+                                onGenerateThumbnailImage = { viewModel.generateAiThumbnail(it) },
+                                onRunRetentionOptimizer = { viewModel.runRetentionOptimizer(it) },
+                                onRunUploadPackage = { viewModel.runFullUploadPackage(it) },
+                                onRunCalendar = { niche, days -> viewModel.runContentCalendar(niche, days) },
+                                onRunCompetitorAudit = { viewModel.runCompetitorAnalyzer(it) },
+                                onGenerateCustomHooks = { viewModel.generateCustomViralHooks(it) },
                                 onExportClipToGallery = { ctx, clip ->
                                     viewModel.exportClipToDeviceGallery(ctx, clip)
                                 },
@@ -399,7 +436,25 @@ private fun AuthenticatedNexusWorkspace(
                                 }
                             )
 
-                            3 -> CreatorHubScreen(
+                            3 -> EmpireHubScreen(
+                                workflowsState = workflowsState,
+                                repurposeResult = repurposeResult,
+                                channelAuditResult = channelAuditResult,
+                                businessEmpireResult = businessEmpireResult,
+                                bannerState = bannerState,
+                                onRunMassRepurposer = { viewModel.runMassRepurposer(it) },
+                                onRunChannelAudit = { viewModel.runChannelHealthAndTrends(it) },
+                                onDeployAiEmployee = { role, mission -> viewModel.deployAiEmployee(role, mission) },
+                                onRunWorkflow = { wf, input -> viewModel.executeWorkflowLive(wf, input) },
+                                onDeleteWorkflow = { viewModel.deleteWorkflow(it) },
+                                onRunBusinessArchitect = { mode, niche -> viewModel.runBusinessArchitect(mode, niche) },
+                                onLaunchStorefrontInBuilder = { niche ->
+                                    selectedTab = 1
+                                    viewModel.generateDropshippingEmpire(niche)
+                                }
+                            )
+
+                            4 -> CreatorHubScreen(
                                 userProfile = profile,
                                 creationsCount = (creationsState as? StreamState.Success)?.data?.size ?: 0,
                                 workflowsCount = (workflowsState as? StreamState.Success)?.data?.size ?: 0,
